@@ -1114,17 +1114,17 @@ export default function App() {
   };
 
   const handleUpdateManualGoalProgress = async (goalId: string, change: number) => {
-    let updatedGoal: DailyGoal | null = null;
-    setGoals(prev => prev.map(g => {
-      if (g.id !== goalId) return g;
-      const manualProgress = { ...(g.manualProgress || {}) };
-      const currentVal = manualProgress[selectedDate] || 0;
-      manualProgress[selectedDate] = Math.max(0, currentVal + change);
-      updatedGoal = { ...g, manualProgress };
-      return updatedGoal;
-    }));
+    const targetGoal = goals.find(g => g.id === goalId);
+    if (!targetGoal) return;
 
-    if (currentUser && updatedGoal) {
+    const manualProgress = { ...(targetGoal.manualProgress || {}) };
+    const currentVal = manualProgress[selectedDate] || 0;
+    manualProgress[selectedDate] = Math.max(0, currentVal + change);
+    const updatedGoal = { ...targetGoal, manualProgress };
+
+    setGoals(prev => prev.map(g => g.id === goalId ? updatedGoal : g));
+
+    if (currentUser) {
       await safeSetDoc(`users/${currentUser.uid}/goals`, goalId, { ...updatedGoal, userId: currentUser.uid });
     }
   };

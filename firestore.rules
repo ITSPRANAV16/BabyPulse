@@ -48,7 +48,7 @@ service cloud.firestore {
 
     function isValidSpecialInstruction(data) {
       return data.id is string && data.id.size() <= 128
-        && data.type is string && (data.type == 'medical' || data.type == 'schedule' || data.type == 'routine')
+        && data.type is string && (data.type == 'medical' || data.type == 'schedule' || data.type == 'routine' || data.type == 'general')
         && data.text is string && data.text.size() <= 1000;
     }
 
@@ -70,9 +70,9 @@ service cloud.firestore {
 
     function isValidDailyGoal(data) {
       return data.id is string && data.id.size() <= 128
-        && data.category is string && (data.category == 'feed_oz' || data.category == 'sleep_hrs' || data.category == 'solid_meals')
+        && data.category is string && (data.category == 'feed_oz' || data.category == 'sleep_minutes' || data.category == 'diapas_wet' || data.category == 'diapas_dirty' || data.category == 'custom')
         && data.title is string && data.title.size() <= 128
-        && data.target is string && data.target.size() <= 20
+        && data.target is number
         && data.unit is string && data.unit.size() <= 10;
     }
 
