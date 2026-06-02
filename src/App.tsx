@@ -53,7 +53,8 @@ import {
   Bell,
   BellOff,
   HelpCircle,
-  Smartphone
+  Smartphone,
+  Users
 } from 'lucide-react';
 
 import { 
@@ -73,6 +74,7 @@ import {
 } from 'recharts';
 
 import { BabyEvent, FoodDiaryEntry, SpecialInstruction, SmartInsight, EventType, ScheduledReminder, WeightLog, DailyGoal, GoalCategory } from './types';
+import { CoParentSyncHub } from './components/CoParentSyncHub';
 import { 
   INITIAL_EVENTS, 
   INITIAL_FOODS, 
@@ -284,6 +286,18 @@ export default function App() {
     return localStorage.getItem('babypulse_baby_dob') || '2023-04-12';
   });
   
+  // Co-Parent & Father status and handover states
+  const [coParentHandoverNote, setCoParentHandoverNote] = useState<string>(() => {
+    return localStorage.getItem('babypulse_coparent_handover_note') || '';
+  });
+  const [coParentActiveStatus, setCoParentActiveStatus] = useState<string>(() => {
+    return localStorage.getItem('babypulse_coparent_active_status') || 'Awake & Active';
+  });
+  const [coParentHandoverTimestamp, setCoParentHandoverTimestamp] = useState<number | null>(() => {
+    const saved = localStorage.getItem('babypulse_coparent_handover_timestamp');
+    return saved ? parseInt(saved) : null;
+  });
+  
   // Custom Instruction form in Care Tab
   const [newInstructionText, setNewInstructionText] = useState<string>('');
   
@@ -416,6 +430,22 @@ export default function App() {
     localStorage.setItem('babypulse_baby_dob', babyDob);
   }, [babyDob]);
 
+  useEffect(() => {
+    localStorage.setItem('babypulse_coparent_handover_note', coParentHandoverNote);
+  }, [coParentHandoverNote]);
+
+  useEffect(() => {
+    localStorage.setItem('babypulse_coparent_active_status', coParentActiveStatus);
+  }, [coParentActiveStatus]);
+
+  useEffect(() => {
+    if (coParentHandoverTimestamp) {
+      localStorage.setItem('babypulse_coparent_handover_timestamp', String(coParentHandoverTimestamp));
+    } else {
+      localStorage.removeItem('babypulse_coparent_handover_timestamp');
+    }
+  }, [coParentHandoverTimestamp]);
+
   // Check biometric support
   useEffect(() => {
     isBiometricsSupportedOnDevice().then(supported => {
@@ -449,6 +479,9 @@ export default function App() {
         if (cloudData.babyDob) setBabyDob(cloudData.babyDob);
         if (cloudData.isSleeping !== undefined) setIsSleeping(cloudData.isSleeping);
         if (cloudData.sleepStartTime !== undefined) setSleepStartTime(cloudData.sleepStartTime);
+        if (cloudData.coParentHandoverNote !== undefined) setCoParentHandoverNote(cloudData.coParentHandoverNote);
+        if (cloudData.coParentHandoverTimestamp !== undefined) setCoParentHandoverTimestamp(cloudData.coParentHandoverTimestamp);
+        if (cloudData.coParentActiveStatus !== undefined) setCoParentActiveStatus(cloudData.coParentActiveStatus);
         
         setEvents(cloudEvents.sort((a, b) => b.timestamp - a.timestamp));
         setFoods(cloudFoods.sort((a, b) => b.timestamp - a.timestamp));
@@ -583,6 +616,29 @@ export default function App() {
           if (data.babyDob) setBabyDob(data.babyDob);
           if (data.isSleeping !== undefined) setIsSleeping(data.isSleeping);
           if (data.sleepStartTime !== undefined) setSleepStartTime(data.sleepStartTime);
+          
+          if (data.coParentHandoverNote !== undefined) {
+            setCoParentHandoverNote((prev) => {
+              const newVal = data.coParentHandoverNote || '';
+              // Detect cross-device changes to show a real-time notification
+              if (prev && newVal && prev !== newVal) {
+                setTimeout(() => showToast(`Co-parent update: "${newVal.slice(0, 35)}..."`, "info"), 100);
+              }
+              return newVal;
+            });
+          }
+          if (data.coParentActiveStatus !== undefined) {
+            setCoParentActiveStatus((prev) => {
+              const newVal = data.coParentActiveStatus || 'Awake & Active';
+              if (prev && prev !== newVal) {
+                setTimeout(() => showToast(`Co-parent changed status: "${newVal}"`, "info"), 150);
+              }
+              return newVal;
+            });
+          }
+          if (data.coParentHandoverTimestamp !== undefined) {
+            setCoParentHandoverTimestamp(data.coParentHandoverTimestamp || null);
+          }
         }
       },
       (error) => {
@@ -1113,6 +1169,34 @@ export default function App() {
     showToast("Loaded default daily goals successfully!", "success");
   };
 
+  const handleSaveCoParentUpdate = async (noteStr: string, statusStr: string) => {
+    const timestamp = Date.now();
+    setCoParentHandoverNote(noteStr);
+    setCoParentActiveStatus(statusStr);
+    setCoParentHandoverTimestamp(timestamp);
+
+    if (currentUser) {
+      try {
+        await safeSetDoc('users', currentUser.uid, {
+          userId: currentUser.uid,
+          babyName,
+          babyDob,
+          isSleeping,
+          sleepStartTime,
+          coParentHandoverNote: noteStr,
+          coParentHandoverTimestamp: timestamp,
+          coParentActiveStatus: statusStr
+        });
+        showToast("Dynamic status updated and synced to co-parent!", "success");
+      } catch (err) {
+        console.error("Failed to sync co-parent status:", err);
+        showToast("Saved locally, but failed to sync online.", "error");
+      }
+    } else {
+      showToast("Registered locally. Log in to sync in real-time with the Father!", "info");
+    }
+  };
+
   const handleUpdateManualGoalProgress = async (goalId: string, change: number) => {
     const targetGoal = goals.find(g => g.id === goalId);
     if (!targetGoal) return;
@@ -1586,7 +1670,10 @@ export default function App() {
           babyName,
           babyDob,
           isSleeping: true,
-          sleepStartTime: nowStamp
+          sleepStartTime: nowStamp,
+          coParentHandoverNote,
+          coParentHandoverTimestamp,
+          coParentActiveStatus
         });
       }
     } else {
@@ -1623,7 +1710,10 @@ export default function App() {
           babyName,
           babyDob,
           isSleeping: false,
-          sleepStartTime: null
+          sleepStartTime: null,
+          coParentHandoverNote,
+          coParentHandoverTimestamp,
+          coParentActiveStatus
         });
         if (newEvent) {
           await safeSetDoc(`users/${currentUser.uid}/events`, newEvent.id, { ...newEvent, userId: currentUser.uid });
@@ -2421,7 +2511,10 @@ export default function App() {
                     babyName,
                     babyDob,
                     isSleeping,
-                    sleepStartTime
+                    sleepStartTime,
+                    coParentHandoverNote,
+                    coParentHandoverTimestamp,
+                    coParentActiveStatus
                   });
                 }
                 showToast("Settings saved and synced successfully!", "success");
@@ -2586,6 +2679,16 @@ export default function App() {
                 </button>
               </div>
             </section>
+
+            {/* Father & Co-Parent Sync Hub */}
+            <CoParentSyncHub 
+              currentUser={currentUser}
+              coParentHandoverNote={coParentHandoverNote}
+              coParentActiveStatus={coParentActiveStatus}
+              coParentHandoverTimestamp={coParentHandoverTimestamp}
+              onUpdate={handleSaveCoParentUpdate}
+              babyName={babyName}
+            />
 
             {/* Quick action grid */}
             <section className="space-y-3">

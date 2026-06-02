@@ -77,6 +77,9 @@ interface CloudDataSet {
   babyDob: string;
   isSleeping: boolean;
   sleepStartTime: number | null;
+  coParentHandoverNote?: string;
+  coParentHandoverTimestamp?: number | null;
+  coParentActiveStatus?: string;
   events: BabyEvent[];
   foods: FoodDiaryEntry[];
   instructions: SpecialInstruction[];
@@ -165,6 +168,9 @@ export async function loadUserDataFromCloud(userId: string): Promise<Partial<Clo
       dataSet.babyDob = userProfile.babyDob || '2023-04-12';
       dataSet.isSleeping = !!userProfile.isSleeping;
       dataSet.sleepStartTime = userProfile.sleepStartTime || null;
+      dataSet.coParentHandoverNote = userProfile.coParentHandoverNote || '';
+      dataSet.coParentHandoverTimestamp = userProfile.coParentHandoverTimestamp || null;
+      dataSet.coParentActiveStatus = userProfile.coParentActiveStatus || 'Awake & Active';
     }
 
     // Load subcollections
