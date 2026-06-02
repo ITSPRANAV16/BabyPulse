@@ -29,3 +29,17 @@ createRoot(document.getElementById('root')!).render(
     <App />
   </StrictMode>,
 );
+
+// Register the PWA service worker for complete offline compatibility and static caching
+if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js')
+      .then((registration) => {
+        console.log('BabyPulse Service Worker successfully registered with scope:', registration.scope);
+      })
+      .catch((error) => {
+        console.warn('BabyPulse Service Worker registration failed:', error);
+      });
+  });
+}
+
