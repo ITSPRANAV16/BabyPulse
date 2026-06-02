@@ -100,5 +100,7 @@ export interface ChatMessage {
   text: string;
   timestamp: number;
   userId?: string; // Standard matching field for permissions and syncing
+  reactions?: { [userId: string]: string }; // Map of userId -> selected emoji
+  readBy?: string[]; // Array of userIds who have read this message
 }
 

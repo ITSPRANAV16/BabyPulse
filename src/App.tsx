@@ -1411,6 +1411,66 @@ export default function App() {
     }
   };
 
+  const handleReactToMessage = async (messageId: string, emoji: string) => {
+    const currentUserId = currentUser ? currentUser.uid : 'local-parent';
+    
+    const updatedMessages = messages.map(msg => {
+      if (msg.id === messageId) {
+        const reactions = { ...(msg.reactions || {}) };
+        if (reactions[currentUserId] === emoji) {
+          delete reactions[currentUserId];
+        } else {
+          reactions[currentUserId] = emoji;
+        }
+        return { ...msg, reactions };
+      }
+      return msg;
+    });
+
+    setMessages(updatedMessages);
+
+    if (currentUser) {
+      try {
+        const activeId = linkedFamilyId || currentUser.uid;
+        const targetMessage = updatedMessages.find(msg => msg.id === messageId);
+        if (targetMessage) {
+          await safeSetDoc(`users/${activeId}/messages`, messageId, {
+            ...targetMessage,
+            userId: currentUser.uid
+          });
+        }
+      } catch (err) {
+        console.error("Failed to sync message reaction:", err);
+      }
+    }
+  };
+
+  const handleMarkMessageAsSeen = async (messageId: string) => {
+    if (!currentUser) return;
+    const currentUserId = currentUser.uid;
+
+    const targetMessage = messages.find(msg => msg.id === messageId);
+    if (!targetMessage) return;
+
+    const readBy = [...(targetMessage.readBy || [])];
+    if (readBy.includes(currentUserId)) return; 
+
+    readBy.push(currentUserId);
+    const updatedMessage = { ...targetMessage, readBy };
+
+    setMessages(prev => prev.map(msg => msg.id === messageId ? updatedMessage : msg));
+
+    try {
+      const activeId = linkedFamilyId || currentUser.uid;
+      await safeSetDoc(`users/${activeId}/messages`, messageId, {
+        ...updatedMessage,
+        userId: currentUser.uid
+      });
+    } catch (err) {
+      console.error("Failed to mark message as read:", err);
+    }
+  };
+
   const handleConnectCoParent = async (pairingKey: string) => {
     if (!currentUser) {
       showToast("Please log in to your Google Account first!", "error");
@@ -1435,21 +1495,28 @@ export default function App() {
 
     setIsSyncingCloud(true);
     try {
-      // 1. Check if the target user document exists
-      const targetUserDoc = await safeGetDoc('users', cleanKey);
-      if (!targetUserDoc) {
-        showToast("Invalid Key. No baby diary found under this Family Sync Key.", "error");
-        setIsSyncingCloud(false);
-        return;
-      }
-
-      // 2. Set linkedFamilyId in our own personal profile so security rules authorize access
+      // 1. First, temporarily set linkedFamilyId in our own personal profile so security rules authorize access to cleanKey
       await safeSetDoc('users', currentUser.uid, {
         userId: currentUser.uid,
         linkedFamilyId: cleanKey,
         email: currentUser.email || '',
         displayName: currentUser.displayName || 'Co-Parent'
       });
+
+      // 2. Now check if the target user document exists (authorized as isFamilyMember(cleanKey))
+      const targetUserDoc = await safeGetDoc('users', cleanKey);
+      if (!targetUserDoc) {
+        showToast("Invalid Key. No baby diary found under this Family Sync Key.", "error");
+        // Revert our own linkedFamilyId
+        await safeSetDoc('users', currentUser.uid, {
+          userId: currentUser.uid,
+          linkedFamilyId: null,
+          email: currentUser.email || '',
+          displayName: currentUser.displayName || 'Co-Parent'
+        });
+        setIsSyncingCloud(false);
+        return;
+      }
 
       // 3. To let the partner know we connected, write our metadata into their family document profile!
       await safeSetDoc('users', cleanKey, {
@@ -1481,6 +1548,17 @@ export default function App() {
       showToast("Successfully linked and synchronized diaries with your co-parent!", "success");
     } catch (err: any) {
       console.error("Pairing failure:", err);
+      // Revert our own linkedFamilyId if error occurs during connection
+      try {
+        await safeSetDoc('users', currentUser.uid, {
+          userId: currentUser.uid,
+          linkedFamilyId: null,
+          email: currentUser.email || '',
+          displayName: currentUser.displayName || 'Co-Parent'
+        });
+      } catch (revertErr) {
+        console.error("Failed to revert pairing key link:", revertErr);
+      }
       showToast(`Pairing failed: ${err.message || 'Verification issue'}`, "error");
     } finally {
       setIsSyncingCloud(false);
@@ -3064,6 +3142,8 @@ export default function App() {
               onRequestNotificationPermission={requestNotificationPermission}
               messages={messages}
               onSendMessage={handleSendMessage}
+              onReactToMessage={handleReactToMessage}
+              onMarkMessageAsSeen={handleMarkMessageAsSeen}
             />
 
             {/* Quick action grid */}

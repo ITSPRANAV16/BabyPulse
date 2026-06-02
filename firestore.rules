@@ -59,7 +59,10 @@ service cloud.firestore {
         && data.senderId is string && data.senderId.size() <= 128
         && data.senderName is string && data.senderName.size() <= 128
         && data.text is string && data.text.size() <= 1000
-        && data.timestamp is number;
+        && data.timestamp is number
+        && (!('userId' in data) || data.userId is string)
+        && (!('reactions' in data) || data.reactions is map)
+        && (!('readBy' in data) || data.readBy is list);
     }
 
     function isValidSpecialInstruction(data) {

@@ -38,6 +38,8 @@ interface CoParentSyncHubProps {
   onRequestNotificationPermission: () => Promise<void> | void;
   messages: ChatMessage[];
   onSendMessage: (text: string) => Promise<void> | void;
+  onReactToMessage: (messageId: string, emoji: string) => Promise<void> | void;
+  onMarkMessageAsSeen: (messageId: string) => Promise<void> | void;
 }
 
 // Preset child states
@@ -72,7 +74,9 @@ export const CoParentSyncHub: React.FC<CoParentSyncHubProps> = ({
   notificationPermission,
   onRequestNotificationPermission,
   messages,
-  onSendMessage
+  onSendMessage,
+  onReactToMessage,
+  onMarkMessageAsSeen
 }) => {
   const [localNote, setLocalNote] = useState(coParentHandoverNote);
   const [selectedStatus, setSelectedStatus] = useState(coParentActiveStatus);
@@ -89,6 +93,7 @@ export const CoParentSyncHub: React.FC<CoParentSyncHubProps> = ({
   // Chat form controls
   const [chatInput, setChatInput] = useState('');
   const [isSendingChat, setIsSendingChat] = useState(false);
+  const [activeEmojiPickerId, setActiveEmojiPickerId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
   const scrollToBottom = () => {
@@ -98,6 +103,21 @@ export const CoParentSyncHub: React.FC<CoParentSyncHubProps> = ({
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
+
+  // Automatically mark unread incoming messages as seen when they are received in active view
+  useEffect(() => {
+    if (!currentUser) return;
+    const currentUserId = currentUser.uid;
+
+    messages.forEach(msg => {
+      if (msg.senderId !== currentUserId) {
+        const readBy = msg.readBy || [];
+        if (!readBy.includes(currentUserId)) {
+          onMarkMessageAsSeen(msg.id);
+        }
+      }
+    });
+  }, [messages, currentUser, onMarkMessageAsSeen]);
 
   // Keep local values matched with props (live firebase sync triggers)
   useEffect(() => {
@@ -515,21 +535,123 @@ export const CoParentSyncHub: React.FC<CoParentSyncHubProps> = ({
                   timeStr = dObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
                 }
 
+                const isReadByPartner = msg.readBy && linkedFamilyId && msg.readBy.includes(linkedFamilyId);
+                const hasReactions = msg.reactions && Object.keys(msg.reactions).length > 0;
+
                 return (
                   <div 
                     key={msg.id} 
-                    className={`flex flex-col max-w-[85%] ${isMe ? 'ml-auto items-end' : 'mr-auto items-start'}`}
+                    className={`flex flex-col max-w-[85%] relative group ${isMe ? 'ml-auto items-end' : 'mr-auto items-start'}`}
                   >
-                    <span className="text-[8.5px] font-bold text-neutral-400 mb-0.5 px-1">
-                      {isMe ? 'You' : (msg.senderName || 'Partner')} • {timeStr}
+                    <span className="text-[8.5px] font-bold text-neutral-400 mb-0.5 px-1 flex items-center gap-1.5">
+                      <span>{isMe ? 'You' : (msg.senderName || 'Partner')} • {timeStr}</span>
                     </span>
-                    <div className={`p-2.5 rounded-2xl text-xs leading-normal shadow-[0_1px_2px_rgba(0,0,0,0.02)] ${
-                      isMe 
-                        ? 'bg-primary text-white rounded-tr-none' 
-                        : 'bg-white border border-neutral-200 text-neutral-800 rounded-tl-none'
-                    }`}>
-                      {msg.text}
+
+                    <div className="flex items-center gap-1.5 relative w-full">
+                      {/* Interactive Option button (Left for me) */}
+                      {isMe && (
+                        <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-150 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => setActiveEmojiPickerId(activeEmojiPickerId === msg.id ? null : msg.id)}
+                            className="p-1 text-neutral-400 hover:text-neutral-600 hover:bg-neutral-100 rounded-full cursor-pointer transition-colors"
+                            title="Add reaction"
+                          >
+                            <Smile size={12} className="stroke-[2.5]" />
+                          </button>
+                        </div>
+                      )}
+
+                      {/* Main Message Bubble */}
+                      <div className="relative">
+                        <button
+                          type="button"
+                          onClick={() => setActiveEmojiPickerId(activeEmojiPickerId === msg.id ? null : msg.id)}
+                          className={`w-full text-left p-2.5 rounded-2xl text-xs leading-normal shadow-[0_1px_2px_rgba(0,0,0,0.02)] cursor-pointer focus:outline-none transition-all ${
+                            isMe 
+                              ? 'bg-primary hover:bg-primary-dark/95 text-white rounded-tr-none' 
+                              : 'bg-white hover:bg-neutral-50/80 border border-neutral-200 text-neutral-800 rounded-tl-none'
+                          }`}
+                          title="Click to react"
+                        >
+                          {msg.text}
+                        </button>
+
+                        {/* Floating Emoji Picker Popover */}
+                        {activeEmojiPickerId === msg.id && (
+                          <div className={`absolute bottom-full mb-1 z-30 flex items-center gap-1 bg-white border border-neutral-150/70 shadow-lg rounded-full p-1.5 animate-in fade-in slide-in-from-bottom-2 duration-150 ${isMe ? 'right-0' : 'left-0'}`}>
+                            {['👍', '❤️', '👀', '🍼', '😴'].map((emoji) => (
+                              <button
+                                key={emoji}
+                                type="button"
+                                onClick={() => {
+                                  onReactToMessage(msg.id, emoji);
+                                  setActiveEmojiPickerId(null);
+                                }}
+                                className="w-5.5 h-5.5 flex items-center justify-center hover:bg-neutral-100 rounded-full text-[13px] cursor-pointer hover:scale-120 transition-all active:scale-95"
+                                title={`React ${emoji}`}
+                              >
+                                {emoji}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Interactive Option button (Right for partner) */}
+                      {!isMe && (
+                        <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-150 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => setActiveEmojiPickerId(activeEmojiPickerId === msg.id ? null : msg.id)}
+                            className="p-1 text-neutral-400 hover:text-neutral-600 hover:bg-neutral-100 rounded-full cursor-pointer transition-colors"
+                            title="Add reaction"
+                          >
+                            <Smile size={12} className="stroke-[2.5]" />
+                          </button>
+                        </div>
+                      )}
                     </div>
+
+                    {/* Rendering Active Reactions Badge list below bubble */}
+                    {hasReactions && (
+                      <div className={`flex flex-wrap gap-1 mt-1 ${isMe ? 'justify-end' : 'justify-start'}`}>
+                        {Object.entries(msg.reactions || {}).map(([uid, rEmoji]) => {
+                          const isReactedByMe = currentUser && uid === currentUser.uid;
+                          return (
+                            <button
+                              key={uid}
+                              type="button"
+                              onClick={() => {
+                                onReactToMessage(msg.id, rEmoji);
+                              }}
+                              className={`inline-flex items-center gap-1.5 px-2 py-0.5 text-[10px] rounded-full border shadow-xs transition-all hover:scale-105 cursor-pointer select-none ${
+                                isReactedByMe 
+                                  ? 'bg-sky-50 border-sky-200 text-sky-850 font-extrabold' 
+                                  : 'bg-white border-neutral-200 text-neutral-600 font-bold'
+                              }`}
+                              title={isReactedByMe ? "Click to remove your reaction" : "Partner's quick reaction"}
+                            >
+                              <span>{rEmoji}</span>
+                              <span className="text-[8.5px] font-bold opacity-75">{isReactedByMe ? 'you' : 'partner'}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {/* Read Receipts indication for sent messages */}
+                    {isMe && (
+                      <span className="text-[8px] font-bold text-neutral-400 mt-0.5 flex items-center gap-0.5 pr-1">
+                        {isReadByPartner ? (
+                          <span className="text-emerald-500 font-extrabold flex items-center gap-0.5">
+                            Seen 👀
+                          </span>
+                        ) : (
+                          <span>Delivered ✓</span>
+                        )}
+                      </span>
+                    )}
                   </div>
                 );
               })
