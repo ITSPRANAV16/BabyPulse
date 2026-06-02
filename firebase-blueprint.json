@@ -118,6 +118,20 @@
         "unit": { "type": "string" }
       },
       "required": ["id", "category", "title", "target", "unit"]
+    },
+    "ChatMessage": {
+      "title": "Chat Message",
+      "description": "Direct chat message between co-parents about baby care",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "senderId": { "type": "string" },
+        "senderName": { "type": "string" },
+        "text": { "type": "string" },
+        "timestamp": { "type": "number" },
+        "userId": { "type": "string" }
+      },
+      "required": ["id", "senderId", "senderName", "text", "timestamp"]
     }
   },
   "firestore": {
@@ -148,6 +162,10 @@
     "/users/{userId}/goals/{goalId}": {
       "schema": "DailyGoal",
       "description": "Daily care and feeding targets"
+    },
+    "/users/{userId}/messages/{messageId}": {
+      "schema": "ChatMessage",
+      "description": "Real-time co-parent chat messages about baby care"
     }
   }
 }

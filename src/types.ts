@@ -93,3 +93,12 @@ export interface DailyGoal {
   manualProgress?: { [date: string]: number }; // For custom goals that are tracked manually per day
 }
 
+export interface ChatMessage {
+  id: string;
+  senderId: string;
+  senderName: string;
+  text: string;
+  timestamp: number;
+  userId?: string; // Standard matching field for permissions and syncing
+}
+

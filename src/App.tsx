@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.5
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 
 const tabVariants = {
@@ -73,7 +73,7 @@ import {
   Cell
 } from 'recharts';
 
-import { BabyEvent, FoodDiaryEntry, SpecialInstruction, SmartInsight, EventType, ScheduledReminder, WeightLog, DailyGoal, GoalCategory } from './types';
+import { BabyEvent, FoodDiaryEntry, SpecialInstruction, SmartInsight, EventType, ScheduledReminder, WeightLog, DailyGoal, GoalCategory, ChatMessage } from './types';
 import { CoParentSyncHub } from './components/CoParentSyncHub';
 import { 
   INITIAL_EVENTS, 
@@ -100,7 +100,7 @@ import { CloudAuthGateway } from './components/CloudAuthGateway';
 import { auth, db } from './firebase';
 import { onAuthStateChanged, User, getRedirectResult } from 'firebase/auth';
 import { onSnapshot, collection, doc } from 'firebase/firestore';
-import { safeSetDoc, safeDeleteDoc, OperationType, handleFirestoreError } from './utils/firestoreHelpers';
+import { safeSetDoc, safeDeleteDoc, safeGetDoc, OperationType, handleFirestoreError } from './utils/firestoreHelpers';
 import { loginWithGoogle, logoutUser, loadUserDataFromCloud, uploadLocalDataToCloud } from './utils/firebaseSync';
 import { isBiometricsSupportedOnDevice, registerDeviceBiometrics, verifyDeviceBiometrics } from './utils/biometrics';
 
@@ -297,6 +297,23 @@ export default function App() {
     const saved = localStorage.getItem('babypulse_coparent_handover_timestamp');
     return saved ? parseInt(saved) : null;
   });
+
+  // Family community pairing states
+  const [linkedFamilyId, setLinkedFamilyId] = useState<string | null>(() => {
+    return localStorage.getItem('babypulse_linked_family_id') || null;
+  });
+  const [coParentEmail, setCoParentEmail] = useState<string | null>(() => {
+    return localStorage.getItem('babypulse_coparent_email') || null;
+  });
+  const [coParentName, setCoParentName] = useState<string | null>(() => {
+    return localStorage.getItem('babypulse_coparent_name') || null;
+  });
+
+  const isInitialSyncMap = useRef<Record<string, boolean>>({});
+
+  useEffect(() => {
+    isInitialSyncMap.current = {};
+  }, [linkedFamilyId, currentUser]);
   
   // Custom Instruction form in Care Tab
   const [newInstructionText, setNewInstructionText] = useState<string>('');
@@ -349,6 +366,12 @@ export default function App() {
   const [newWeightDate, setNewWeightDate] = useState<string>(() => getTodayDateString());
   const [newWeightNotes, setNewWeightNotes] = useState<string>('');
   const [showAddWeightForm, setShowAddWeightForm] = useState<boolean>(false);
+
+  // --- Co-Parent Real-Time Chat Thread ---
+  const [messages, setMessages] = useState<ChatMessage[]>(() => {
+    const saved = localStorage.getItem('babypulse_messages');
+    return saved ? JSON.parse(saved) : [];
+  });
 
   // --- Daily Goals State & Inputs ---
   const [goals, setGoals] = useState<DailyGoal[]>(() => {
@@ -446,6 +469,30 @@ export default function App() {
     }
   }, [coParentHandoverTimestamp]);
 
+  useEffect(() => {
+    if (linkedFamilyId) {
+      localStorage.setItem('babypulse_linked_family_id', linkedFamilyId);
+    } else {
+      localStorage.removeItem('babypulse_linked_family_id');
+    }
+  }, [linkedFamilyId]);
+
+  useEffect(() => {
+    if (coParentEmail) {
+      localStorage.setItem('babypulse_coparent_email', coParentEmail);
+    } else {
+      localStorage.removeItem('babypulse_coparent_email');
+    }
+  }, [coParentEmail]);
+
+  useEffect(() => {
+    if (coParentName) {
+      localStorage.setItem('babypulse_coparent_name', coParentName);
+    } else {
+      localStorage.removeItem('babypulse_coparent_name');
+    }
+  }, [coParentName]);
+
   // Check biometric support
   useEffect(() => {
     isBiometricsSupportedOnDevice().then(supported => {
@@ -457,7 +504,49 @@ export default function App() {
   const syncUserData = async (user: User | { uid: string; email: string; displayName: string }) => {
     setIsSyncingCloud(true);
     try {
-      const cloudData = await loadUserDataFromCloud(user.uid);
+      // 1. Fetch personal profile to find linked family ID and general registry details
+      const personalProfile = await safeGetDoc('users', user.uid);
+      let familyIdToUse = user.uid;
+      const currentEmail = user.email || '';
+      const currentName = user.displayName || 'Parent';
+
+      if (personalProfile) {
+        if (personalProfile.linkedFamilyId) {
+          familyIdToUse = personalProfile.linkedFamilyId;
+          setLinkedFamilyId(personalProfile.linkedFamilyId);
+        } else {
+          setLinkedFamilyId(null);
+        }
+
+        setCoParentEmail(personalProfile.coParentEmail || null);
+        setCoParentName(personalProfile.coParentName || null);
+
+        // Keep profile stats matched on general registry lookup
+        await safeSetDoc('users', user.uid, {
+          ...personalProfile,
+          userId: user.uid,
+          email: currentEmail,
+          displayName: currentName
+        });
+      } else {
+        // Create initial personal profile
+        await safeSetDoc('users', user.uid, {
+          userId: user.uid,
+          babyName: 'Alex',
+          babyDob: '2023-04-12',
+          isSleeping: false,
+          sleepStartTime: null,
+          email: currentEmail,
+          displayName: currentName,
+          linkedFamilyId: null
+        });
+        setLinkedFamilyId(null);
+        setCoParentEmail(null);
+        setCoParentName(null);
+      }
+
+      // 2. Fetch actually active family diary records
+      const cloudData = await loadUserDataFromCloud(familyIdToUse);
       
       // Filter out any default preloaded demo IDs from both loaded cloud records and local state files!
       const cloudEvents = (cloudData?.events || []).filter(e => !['e1', 'e2', 'e3', 'e4'].includes(e.id));
@@ -525,7 +614,7 @@ export default function App() {
         showToast("Google Sync Active: Preloaded demo data cleared to start fresh!", "info");
         
         await uploadLocalDataToCloud(
-          user.uid,
+          familyIdToUse,
           { 
             events: filteredEvents, 
             foods: filteredFoods, 
@@ -602,27 +691,46 @@ export default function App() {
 
   // Real-time synchronization for multi-device support (laptop & mobile)
   useEffect(() => {
-    if (!currentUser) return;
+    const activeId = currentUser ? (linkedFamilyId || currentUser.uid) : null;
+    if (!activeId) return;
 
     const unsubscribes: (() => void)[] = [];
 
     // 1. Profile document (updates baby dob, name, and live sleep stage timers)
     const unsubProfile = onSnapshot(
-      doc(db, 'users', currentUser.uid),
+      doc(db, 'users', activeId),
       (docSnap) => {
         if (docSnap.exists()) {
           const data = docSnap.data();
           if (data.babyName) setBabyName(data.babyName);
           if (data.babyDob) setBabyDob(data.babyDob);
-          if (data.isSleeping !== undefined) setIsSleeping(data.isSleeping);
+          const isFromPartner = data.lastUpdatedBy && currentUser && data.lastUpdatedBy !== currentUser.uid;
+
+          if (data.isSleeping !== undefined) {
+            setIsSleeping((prev) => {
+              if (isFromPartner && prev !== undefined && prev !== data.isSleeping) {
+                const actionText = data.isSleeping ? "started a sleep session 💤" : "is now awake! ☀️";
+                sendBrowserNotification(
+                  `🍼 ${data.babyName || babyName || 'Baby'} Sleep Update`,
+                  `${data.coParentName || 'Co-parent'} logged that baby ${actionText}`
+                );
+              }
+              return data.isSleeping;
+            });
+          }
           if (data.sleepStartTime !== undefined) setSleepStartTime(data.sleepStartTime);
+          if (data.coParentEmail !== undefined) setCoParentEmail(data.coParentEmail || null);
+          if (data.coParentName !== undefined) setCoParentName(data.coParentName || null);
           
           if (data.coParentHandoverNote !== undefined) {
             setCoParentHandoverNote((prev) => {
               const newVal = data.coParentHandoverNote || '';
               // Detect cross-device changes to show a real-time notification
-              if (prev && newVal && prev !== newVal) {
-                setTimeout(() => showToast(`Co-parent update: "${newVal.slice(0, 35)}..."`, "info"), 100);
+              if (isFromPartner && prev && newVal && prev !== newVal) {
+                sendBrowserNotification(
+                  `📋 Co-Parent Handover Note`,
+                  `"${newVal}"`
+                );
               }
               return newVal;
             });
@@ -630,8 +738,11 @@ export default function App() {
           if (data.coParentActiveStatus !== undefined) {
             setCoParentActiveStatus((prev) => {
               const newVal = data.coParentActiveStatus || 'Awake & Active';
-              if (prev && prev !== newVal) {
-                setTimeout(() => showToast(`Co-parent changed status: "${newVal}"`, "info"), 150);
+              if (isFromPartner && prev && prev !== newVal) {
+                sendBrowserNotification(
+                  `✨ Live Activity Status Shift`,
+                  `${data.babyName || babyName || 'Baby'}'s status is now: ${newVal}`
+                );
               }
               return newVal;
             });
@@ -654,7 +765,7 @@ export default function App() {
       setter: (data: any[]) => void,
       sortFn?: (a: any, b: any) => number
     ) => {
-      const colRef = collection(db, 'users', currentUser.uid, subPath);
+      const colRef = collection(db, 'users', activeId, subPath);
       return onSnapshot(
         colRef,
         (snapshot) => {
@@ -662,6 +773,44 @@ export default function App() {
           snapshot.forEach((docSnap) => {
             list.push({ ...docSnap.data(), id: docSnap.id });
           });
+
+          // Detect co-parent additions for real-time notifications
+          if (isInitialSyncMap.current[subPath] === true) {
+            snapshot.docChanges().forEach((change) => {
+              if (change.type === 'added') {
+                const docData = change.doc.data();
+                // If recorded by someone else (not current authenticated user)
+                if (docData.userId && currentUser && docData.userId !== currentUser.uid) {
+                  let alertTitle = "✨ Co-Parent Update";
+                  let alertText = `${docData.title || docData.itemName || "Baby update synced"}`;
+                  
+                  if (subPath === 'events') {
+                    alertText = `${babyName || 'Baby'} status: ${docData.title} logged (${docData.time || ''} ${docData.ampm || ''})`;
+                  } else if (subPath === 'foods') {
+                    alertTitle = "🍼 Co-Parent Feeding Log";
+                    alertText = `Recorded feed: ${docData.itemName}`;
+                  } else if (subPath === 'instructions') {
+                    alertTitle = "📋 Co-Parent Care Note";
+                    alertText = `New Special Instruction: "${docData.text?.slice(0, 40)}..."`;
+                  } else if (subPath === 'weightLogs') {
+                    alertTitle = "⚖️ Weight Milestones";
+                    alertText = `Recorded weight check: ${docData.weightLb} lbs ${docData.weightOz} oz!`;
+                  } else if (subPath === 'goals') {
+                    alertTitle = "🎯 Co-Parent Routines";
+                    alertText = `Modified daily activity routine targets!`;
+                  } else if (subPath === 'messages') {
+                    alertTitle = `💬 Message from ${coParentName || docData.senderName || 'Partner'}`;
+                    alertText = `${docData.text?.slice(0, 45)}${docData.text?.length > 45 ? '...' : ''}`;
+                  }
+
+                  sendBrowserNotification(alertTitle, alertText);
+                }
+              }
+            });
+          } else {
+            isInitialSyncMap.current[subPath] = true;
+          }
+
           // Avoid recreating default demo preloads if deleted
           const filtered = list.filter(item => 
             !['e1', 'e2', 'e3', 'e4', 'f1', 'f2', 'f3', 's-rem-1', 's-rem-2', 's-rem-3', 'w-1', 'w-2', 'w-3', 'w-4', 'w-5', 'w-6'].includes(item.id)
@@ -680,11 +829,12 @@ export default function App() {
     unsubscribes.push(setupCollectionSync('schedules', setSchedules));
     unsubscribes.push(setupCollectionSync('weightLogs', setWeightLogs, (a, b) => a.timestamp - b.timestamp));
     unsubscribes.push(setupCollectionSync('goals', setGoals));
+    unsubscribes.push(setupCollectionSync('messages', setMessages, (a, b) => a.timestamp - b.timestamp));
 
     return () => {
       unsubscribes.forEach((unsub) => unsub());
     };
-  }, [currentUser]);
+  }, [currentUser, linkedFamilyId]);
 
   // Helper to complete sign-in from a delegated secure gateway
   const signInWithDelegatedToken = async (
@@ -823,6 +973,10 @@ export default function App() {
   }, [goals]);
 
   useEffect(() => {
+    localStorage.setItem('babypulse_messages', JSON.stringify(messages));
+  }, [messages]);
+
+  useEffect(() => {
     setNewWeightDate(selectedDate);
   }, [selectedDate]);
 
@@ -886,6 +1040,23 @@ export default function App() {
       osc2.stop(now + 0.7);
     } catch (e) {
       console.warn("Could not play notification chime:", e);
+    }
+  };
+
+  const sendBrowserNotification = (title: string, body: string) => {
+    // 1. Play chime sound
+    playNotificationSound();
+
+    // 2. Trigger browser native notification
+    if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
+      try {
+        new Notification(title, {
+          body,
+          icon: "/favicon.ico"
+        });
+      } catch (err) {
+        console.warn('Notification error or iframe sandbox restriction:', err);
+      }
     }
   };
 
@@ -992,9 +1163,10 @@ export default function App() {
     }
 
     if (currentUser && targetSched) {
-      await safeSetDoc(`users/${currentUser.uid}/schedules`, id, { ...targetSched, userId: currentUser.uid });
+      const activeId = linkedFamilyId || currentUser.uid;
+      await safeSetDoc(`users/${activeId}/schedules`, id, { ...targetSched, userId: currentUser.uid });
       if (triggeredEvent) {
-        await safeSetDoc(`users/${currentUser.uid}/events`, (triggeredEvent as BabyEvent).id, { ...triggeredEvent, userId: currentUser.uid });
+        await safeSetDoc(`users/${activeId}/events`, (triggeredEvent as BabyEvent).id, { ...triggeredEvent, userId: currentUser.uid });
       }
     }
   };
@@ -1042,7 +1214,8 @@ export default function App() {
     
     if (currentUser && targetSched) {
       try {
-        await safeSetDoc(`users/${currentUser.uid}/schedules`, id, { ...targetSched, userId: currentUser.uid });
+        const activeId = linkedFamilyId || currentUser.uid;
+        await safeSetDoc(`users/${activeId}/schedules`, id, { ...targetSched, userId: currentUser.uid });
       } catch (err) {
         console.error("Failed to sync snoozed schedule to Firebase:", err);
       }
@@ -1071,7 +1244,8 @@ export default function App() {
     setShowAddScheduleForm(false);
 
     if (currentUser) {
-      await safeSetDoc(`users/${currentUser.uid}/schedules`, newRem.id, { ...newRem, userId: currentUser.uid });
+      const activeId = linkedFamilyId || currentUser.uid;
+      await safeSetDoc(`users/${activeId}/schedules`, newRem.id, { ...newRem, userId: currentUser.uid });
     }
   };
 
@@ -1082,7 +1256,8 @@ export default function App() {
     setSchedules(prev => prev.filter(s => s.id !== id));
 
     if (currentUser) {
-      await safeDeleteDoc(`users/${currentUser.uid}/schedules`, id);
+      const activeId = linkedFamilyId || currentUser.uid;
+      await safeDeleteDoc(`users/${activeId}/schedules`, id);
     }
   };
 
@@ -1110,7 +1285,8 @@ export default function App() {
     setShowAddWeightForm(false);
 
     if (currentUser) {
-      await safeSetDoc(`users/${currentUser.uid}/weightLogs`, newLog.id, { ...newLog, userId: currentUser.uid });
+      const activeId = linkedFamilyId || currentUser.uid;
+      await safeSetDoc(`users/${activeId}/weightLogs`, newLog.id, { ...newLog, userId: currentUser.uid });
     }
   };
 
@@ -1121,7 +1297,8 @@ export default function App() {
     setWeightLogs(prev => prev.filter(w => w.id !== id));
 
     if (currentUser) {
-      await safeDeleteDoc(`users/${currentUser.uid}/weightLogs`, id);
+      const activeId = linkedFamilyId || currentUser.uid;
+      await safeDeleteDoc(`users/${activeId}/weightLogs`, id);
     }
   };
 
@@ -1144,7 +1321,8 @@ export default function App() {
     setShowAddGoalForm(false);
 
     if (currentUser) {
-      await safeSetDoc(`users/${currentUser.uid}/goals`, newGoal.id, { ...newGoal, userId: currentUser.uid });
+      const activeId = linkedFamilyId || currentUser.uid;
+      await safeSetDoc(`users/${activeId}/goals`, newGoal.id, { ...newGoal, userId: currentUser.uid });
     }
   };
 
@@ -1155,15 +1333,17 @@ export default function App() {
     setGoals(prev => prev.filter(g => g.id !== id));
 
     if (currentUser) {
-      await safeDeleteDoc(`users/${currentUser.uid}/goals`, id);
+      const activeId = linkedFamilyId || currentUser.uid;
+      await safeDeleteDoc(`users/${activeId}/goals`, id);
     }
   };
 
   const handleLoadDefaultGoals = async () => {
     setGoals(INITIAL_GOALS);
     if (currentUser) {
+      const activeId = linkedFamilyId || currentUser.uid;
       for (const g of INITIAL_GOALS) {
-        await safeSetDoc(`users/${currentUser.uid}/goals`, g.id, { ...g, userId: currentUser.uid });
+        await safeSetDoc(`users/${activeId}/goals`, g.id, { ...g, userId: currentUser.uid });
       }
     }
     showToast("Loaded default daily goals successfully!", "success");
@@ -1177,15 +1357,19 @@ export default function App() {
 
     if (currentUser) {
       try {
-        await safeSetDoc('users', currentUser.uid, {
-          userId: currentUser.uid,
+        const targetFamilyId = linkedFamilyId || currentUser.uid;
+        await safeSetDoc('users', targetFamilyId, {
+          userId: targetFamilyId,
           babyName,
           babyDob,
           isSleeping,
           sleepStartTime,
           coParentHandoverNote: noteStr,
           coParentHandoverTimestamp: timestamp,
-          coParentActiveStatus: statusStr
+          coParentActiveStatus: statusStr,
+          coParentEmail,
+          coParentName,
+          lastUpdatedBy: currentUser.uid
         });
         showToast("Dynamic status updated and synced to co-parent!", "success");
       } catch (err) {
@@ -1193,7 +1377,175 @@ export default function App() {
         showToast("Saved locally, but failed to sync online.", "error");
       }
     } else {
-      showToast("Registered locally. Log in to sync in real-time with the Father!", "info");
+      showToast("Registered locally. Log in to sync in real-time with your partner!", "info");
+    }
+  };
+
+  const handleSendMessage = async (text: string) => {
+    if (!text.trim()) return;
+
+    // Use current authenticated display name or email, or default to general parent
+    let senderName = "Parent";
+    if (currentUser) {
+      senderName = currentUser.displayName || (currentUser.email ? currentUser.email.split('@')[0] : 'Parent');
+    }
+
+    const newMessage: ChatMessage = {
+      id: `msg-${Date.now()}`,
+      senderId: currentUser ? currentUser.uid : 'local-parent',
+      senderName,
+      text: text.trim(),
+      timestamp: Date.now(),
+      userId: currentUser ? currentUser.uid : 'local-parent'
+    };
+
+    setMessages(prev => [...prev, newMessage]);
+
+    if (currentUser) {
+      try {
+        const activeId = linkedFamilyId || currentUser.uid;
+        await safeSetDoc(`users/${activeId}/messages`, newMessage.id, { ...newMessage, userId: currentUser.uid });
+      } catch (err) {
+        console.error("Failed to sync message to cloud:", err);
+      }
+    }
+  };
+
+  const handleConnectCoParent = async (pairingKey: string) => {
+    if (!currentUser) {
+      showToast("Please log in to your Google Account first!", "error");
+      return;
+    }
+    
+    // Normalize target pairingKey (strip prefixes like BP- if any)
+    let cleanKey = pairingKey.trim();
+    if (cleanKey.toUpperCase().startsWith("BP-")) {
+      cleanKey = cleanKey.slice(3).trim();
+    }
+
+    if (!cleanKey) {
+      showToast("Please enter a valid Family Sync Key.", "error");
+      return;
+    }
+
+    if (cleanKey === currentUser.uid) {
+      showToast("You cannot pair with your own device key!", "error");
+      return;
+    }
+
+    setIsSyncingCloud(true);
+    try {
+      // 1. Check if the target user document exists
+      const targetUserDoc = await safeGetDoc('users', cleanKey);
+      if (!targetUserDoc) {
+        showToast("Invalid Key. No baby diary found under this Family Sync Key.", "error");
+        setIsSyncingCloud(false);
+        return;
+      }
+
+      // 2. Set linkedFamilyId in our own personal profile so security rules authorize access
+      await safeSetDoc('users', currentUser.uid, {
+        userId: currentUser.uid,
+        linkedFamilyId: cleanKey,
+        email: currentUser.email || '',
+        displayName: currentUser.displayName || 'Co-Parent'
+      });
+
+      // 3. To let the partner know we connected, write our metadata into their family document profile!
+      await safeSetDoc('users', cleanKey, {
+        ...targetUserDoc,
+        coParentEmail: currentUser.email || '',
+        coParentName: currentUser.displayName || 'Co-Parent',
+        coParentActiveStatus: coParentActiveStatus || 'Awake & Active'
+      });
+
+      setLinkedFamilyId(cleanKey);
+      setCoParentEmail(currentUser.email || 'Partner');
+      setCoParentName(currentUser.displayName || 'Partner');
+
+      // 4. Force reload subcollections of the connected partner
+      const targetData = await loadUserDataFromCloud(cleanKey);
+      if (targetData) {
+        if (targetData.babyName) setBabyName(targetData.babyName);
+        if (targetData.babyDob) setBabyDob(targetData.babyDob);
+        if (targetData.isSleeping !== undefined) setIsSleeping(targetData.isSleeping);
+        if (targetData.sleepStartTime !== undefined) setSleepStartTime(targetData.sleepStartTime);
+        if (targetData.events) setEvents(targetData.events);
+        if (targetData.foods) setFoods(targetData.foods);
+        if (targetData.instructions) setInstructions(targetData.instructions);
+        if (targetData.schedules) setSchedules(targetData.schedules);
+        if (targetData.weightLogs) setWeightLogs(targetData.weightLogs);
+        if (targetData.goals) setGoals(targetData.goals);
+      }
+
+      showToast("Successfully linked and synchronized diaries with your co-parent!", "success");
+    } catch (err: any) {
+      console.error("Pairing failure:", err);
+      showToast(`Pairing failed: ${err.message || 'Verification issue'}`, "error");
+    } finally {
+      setIsSyncingCloud(false);
+    }
+  };
+
+  const handleDisconnectCoParent = async () => {
+    if (!currentUser) return;
+    
+    const confirmDisconnect = await customConfirm(
+      "Confirm Disconnect",
+      "Are you sure you want to stop syncing and break the shared family community connection? Your local diary will revert to your personal Google account storage.",
+      "Disconnect",
+      "Keep Sharing"
+    );
+
+    if (!confirmDisconnect) return;
+
+    setIsSyncingCloud(true);
+    try {
+      // 1. Remove linkedFamilyId from our own profile
+      await safeSetDoc('users', currentUser.uid, {
+        userId: currentUser.uid,
+        linkedFamilyId: null,
+        email: currentUser.email || '',
+        displayName: currentUser.displayName || ''
+      });
+
+      // 2. If we was linked, clear co-parent presence in their profile
+      if (linkedFamilyId) {
+        const originalFamilyDoc = await safeGetDoc('users', linkedFamilyId);
+        if (originalFamilyDoc) {
+          await safeSetDoc('users', linkedFamilyId, {
+            ...originalFamilyDoc,
+            coParentEmail: null,
+            coParentName: null
+          });
+        }
+      }
+
+      setLinkedFamilyId(null);
+      setCoParentEmail(null);
+      setCoParentName(null);
+
+      // Re-initialize using own profile records
+      const personalData = await loadUserDataFromCloud(currentUser.uid);
+      if (personalData) {
+        setBabyName(personalData.babyName || 'Alex');
+        setBabyDob(personalData.babyDob || '2023-04-12');
+        setIsSleeping(!!personalData.isSleeping);
+        setSleepStartTime(personalData.sleepStartTime || null);
+        setEvents(personalData.events || []);
+        setFoods(personalData.foods || []);
+        setInstructions(personalData.instructions || []);
+        setSchedules(personalData.schedules || []);
+        setWeightLogs(personalData.weightLogs || []);
+        setGoals(personalData.goals || []);
+      }
+
+      showToast("Successfully disconnected co-parenting community link.", "success");
+    } catch (err) {
+      console.error("Disconnect failure:", err);
+      showToast("Failed to clean up sharing links online.", "error");
+    } finally {
+      setIsSyncingCloud(false);
     }
   };
 
@@ -1209,7 +1561,8 @@ export default function App() {
     setGoals(prev => prev.map(g => g.id === goalId ? updatedGoal : g));
 
     if (currentUser) {
-      await safeSetDoc(`users/${currentUser.uid}/goals`, goalId, { ...updatedGoal, userId: currentUser.uid });
+      const activeId = linkedFamilyId || currentUser.uid;
+      await safeSetDoc(`users/${activeId}/goals`, goalId, { ...updatedGoal, userId: currentUser.uid });
     }
   };
 
@@ -1665,15 +2018,19 @@ export default function App() {
       setSleepStartTime(nowStamp);
 
       if (currentUser) {
-        await safeSetDoc('users', currentUser.uid, {
-          userId: currentUser.uid,
+        const targetFamilyId = linkedFamilyId || currentUser.uid;
+        await safeSetDoc('users', targetFamilyId, {
+          userId: targetFamilyId,
           babyName,
           babyDob,
           isSleeping: true,
           sleepStartTime: nowStamp,
           coParentHandoverNote,
           coParentHandoverTimestamp,
-          coParentActiveStatus
+          coParentActiveStatus,
+          coParentEmail,
+          coParentName,
+          lastUpdatedBy: currentUser.uid
         });
       }
     } else {
@@ -1705,18 +2062,22 @@ export default function App() {
       setSleepStartTime(null);
 
       if (currentUser) {
-        await safeSetDoc('users', currentUser.uid, {
-          userId: currentUser.uid,
+        const targetFamilyId = linkedFamilyId || currentUser.uid;
+        await safeSetDoc('users', targetFamilyId, {
+          userId: targetFamilyId,
           babyName,
           babyDob,
           isSleeping: false,
           sleepStartTime: null,
           coParentHandoverNote,
           coParentHandoverTimestamp,
-          coParentActiveStatus
+          coParentActiveStatus,
+          coParentEmail,
+          coParentName,
+          lastUpdatedBy: currentUser.uid
         });
         if (newEvent) {
-          await safeSetDoc(`users/${currentUser.uid}/events`, newEvent.id, { ...newEvent, userId: currentUser.uid });
+          await safeSetDoc(`users/${targetFamilyId}/events`, newEvent.id, { ...newEvent, userId: currentUser.uid });
         }
       }
     }
@@ -1794,7 +2155,8 @@ export default function App() {
     setNewInstructionText('');
 
     if (currentUser) {
-      await safeSetDoc(`users/${currentUser.uid}/instructions`, newInst.id, { ...newInst, userId: currentUser.uid });
+      const activeId = linkedFamilyId || currentUser.uid;
+      await safeSetDoc(`users/${activeId}/instructions`, newInst.id, { ...newInst, userId: currentUser.uid });
     }
   };
 
@@ -1805,7 +2167,8 @@ export default function App() {
     setInstructions(prev => prev.filter(item => item.id !== id));
 
     if (currentUser) {
-      await safeDeleteDoc(`users/${currentUser.uid}/instructions`, id);
+      const activeId = linkedFamilyId || currentUser.uid;
+      await safeDeleteDoc(`users/${activeId}/instructions`, id);
     }
   };
 
@@ -1820,7 +2183,8 @@ export default function App() {
     setEvents(prev => [newEvent, ...prev]);
 
     if (currentUser) {
-      await safeSetDoc(`users/${currentUser.uid}/events`, newEvent.id, { ...newEvent, userId: currentUser.uid });
+      const activeId = linkedFamilyId || currentUser.uid;
+      await safeSetDoc(`users/${activeId}/events`, newEvent.id, { ...newEvent, userId: currentUser.uid });
     }
   };
 
@@ -1833,7 +2197,8 @@ export default function App() {
     setFoods(prev => [newFood, ...prev]);
 
     if (currentUser) {
-      await safeSetDoc(`users/${currentUser.uid}/foods`, newFood.id, { ...newFood, userId: currentUser.uid });
+      const activeId = linkedFamilyId || currentUser.uid;
+      await safeSetDoc(`users/${activeId}/foods`, newFood.id, { ...newFood, userId: currentUser.uid });
     }
   };
 
@@ -1844,7 +2209,8 @@ export default function App() {
     setEvents(prev => prev.filter(e => e.id !== id));
 
     if (currentUser) {
-      await safeDeleteDoc(`users/${currentUser.uid}/events`, id);
+      const activeId = linkedFamilyId || currentUser.uid;
+      await safeDeleteDoc(`users/${activeId}/events`, id);
     }
   };
 
@@ -1855,7 +2221,8 @@ export default function App() {
     setFoods(prev => prev.filter(f => f.id !== id));
 
     if (currentUser) {
-      await safeDeleteDoc(`users/${currentUser.uid}/foods`, id);
+      const activeId = linkedFamilyId || currentUser.uid;
+      await safeDeleteDoc(`users/${activeId}/foods`, id);
     }
   };
 
@@ -2688,6 +3055,15 @@ export default function App() {
               coParentHandoverTimestamp={coParentHandoverTimestamp}
               onUpdate={handleSaveCoParentUpdate}
               babyName={babyName}
+              linkedFamilyId={linkedFamilyId}
+              coParentEmail={coParentEmail}
+              coParentName={coParentName}
+              onConnect={handleConnectCoParent}
+              onDisconnect={handleDisconnectCoParent}
+              notificationPermission={notificationPermission}
+              onRequestNotificationPermission={requestNotificationPermission}
+              messages={messages}
+              onSendMessage={handleSendMessage}
             />
 
             {/* Quick action grid */}
@@ -3349,10 +3725,11 @@ export default function App() {
                         <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-bold ${
                           f.reaction === 'loved_it' ? 'bg-green-100 text-[#002109]' :
                           f.reaction === 'ate_some' ? 'bg-yellow-100 text-yellow-850' :
-                          f.reaction === 'not_a_fan' ? 'bg-orange-100 text-orange-800' : 'bg-red-100 text-red-900'
+                          f.reaction === 'not_a_fan' ? 'bg-orange-100 text-orange-800' :
+                          f.reaction === 'spit_out' ? 'bg-red-100 text-red-900' : 'bg-neutral-100 text-neutral-600'
                         }`}>
                           <Smile size={11} />
-                          {f.reaction.replace('_', ' ')}
+                          {String(f.reaction || 'none').replace('_', ' ')}
                         </span>
                         
                         <span className="inline-flex items-center gap-1.5 bg-[#beefbf]/50 text-secondary px-3 py-1 rounded-full text-[10px] font-bold">

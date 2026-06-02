@@ -16,6 +16,14 @@ service cloud.firestore {
       return isSignedIn() && request.auth.uid == userId;
     }
 
+    function isFamilyMember(userId) {
+      return isSignedIn() && (
+        request.auth.uid == userId ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.linkedFamilyId == userId)
+      );
+    }
+
     function isValidId(id) {
       return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
     }
@@ -43,7 +51,15 @@ service cloud.firestore {
         && data.date is string && data.date.size() <= 15
         && data.timestamp is number
         && data.itemName is string && data.itemName.size() <= 200
-        && data.reaction is string && (data.reaction == 'loved_it' || data.reaction == 'ate_some' || data.reaction == 'not_a_fan');
+        && data.reaction is string && (data.reaction == 'loved_it' || data.reaction == 'ate_some' || data.reaction == 'not_a_fan' || data.reaction == 'spit_out' || data.reaction == 'none');
+    }
+
+    function isValidChatMessage(data) {
+      return data.id is string && data.id.size() <= 128
+        && data.senderId is string && data.senderId.size() <= 128
+        && data.senderName is string && data.senderName.size() <= 128
+        && data.text is string && data.text.size() <= 1000
+        && data.timestamp is number;
     }
 
     function isValidSpecialInstruction(data) {
@@ -78,44 +94,51 @@ service cloud.firestore {
 
     // Path definitions
     match /users/{userId} {
-      allow read: if isOwner(userId);
-      allow create, update: if isOwner(userId) && isValidId(userId) && isValidUserAccount(request.resource.data);
+      allow read: if isFamilyMember(userId);
+      allow create: if isOwner(userId) && isValidId(userId) && isValidUserAccount(request.resource.data);
+      allow update: if isFamilyMember(userId) && isValidUserAccount(request.resource.data);
       allow delete: if isOwner(userId);
 
       match /events/{eventId} {
-        allow read: if isOwner(userId);
-        allow create, update: if isOwner(userId) && isValidId(eventId) && isValidBabyEvent(request.resource.data);
-        allow delete: if isOwner(userId);
+        allow read: if isFamilyMember(userId);
+        allow create, update: if isFamilyMember(userId) && isValidId(eventId) && isValidBabyEvent(request.resource.data);
+        allow delete: if isFamilyMember(userId);
       }
 
       match /foods/{foodId} {
-        allow read: if isOwner(userId);
-        allow create, update: if isOwner(userId) && isValidId(foodId) && isValidFoodDiaryEntry(request.resource.data);
-        allow delete: if isOwner(userId);
+        allow read: if isFamilyMember(userId);
+        allow create, update: if isFamilyMember(userId) && isValidId(foodId) && isValidFoodDiaryEntry(request.resource.data);
+        allow delete: if isFamilyMember(userId);
       }
 
       match /instructions/{instId} {
-        allow read: if isOwner(userId);
-        allow create, update: if isOwner(userId) && isValidId(instId) && isValidSpecialInstruction(request.resource.data);
-        allow delete: if isOwner(userId);
+        allow read: if isFamilyMember(userId);
+        allow create, update: if isFamilyMember(userId) && isValidId(instId) && isValidSpecialInstruction(request.resource.data);
+        allow delete: if isFamilyMember(userId);
       }
 
       match /schedules/{reminderId} {
-        allow read: if isOwner(userId);
-        allow create, update: if isOwner(userId) && isValidId(reminderId) && isValidScheduledReminder(request.resource.data);
-        allow delete: if isOwner(userId);
+        allow read: if isFamilyMember(userId);
+        allow create, update: if isFamilyMember(userId) && isValidId(reminderId) && isValidScheduledReminder(request.resource.data);
+        allow delete: if isFamilyMember(userId);
       }
 
       match /weightLogs/{weightId} {
-        allow read: if isOwner(userId);
-        allow create, update: if isOwner(userId) && isValidId(weightId) && isValidWeightLog(request.resource.data);
-        allow delete: if isOwner(userId);
+        allow read: if isFamilyMember(userId);
+        allow create, update: if isFamilyMember(userId) && isValidId(weightId) && isValidWeightLog(request.resource.data);
+        allow delete: if isFamilyMember(userId);
       }
 
       match /goals/{goalId} {
-        allow read: if isOwner(userId);
-        allow create, update: if isOwner(userId) && isValidId(goalId) && isValidDailyGoal(request.resource.data);
-        allow delete: if isOwner(userId);
+        allow read: if isFamilyMember(userId);
+        allow create, update: if isFamilyMember(userId) && isValidId(goalId) && isValidDailyGoal(request.resource.data);
+        allow delete: if isFamilyMember(userId);
+      }
+
+      match /messages/{messageId} {
+        allow read: if isFamilyMember(userId);
+        allow create, update: if isFamilyMember(userId) && isValidId(messageId) && isValidChatMessage(request.resource.data);
+        allow delete: if isFamilyMember(userId);
       }
     }
   }
