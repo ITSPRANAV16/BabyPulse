@@ -95,6 +95,7 @@ import { AppTutorial } from './components/AppTutorial';
 import { DownloadAppModal } from './components/DownloadAppModal';
 import { printPediatricianReport } from './utils/printReport';
 import { CloudAuthGateway } from './components/CloudAuthGateway';
+import { LoginPromptModal } from './components/LoginPromptModal';
 
 // Google Sign-In & Security integrations
 import { auth, db } from './firebase';
@@ -154,6 +155,10 @@ export default function App() {
   const [isSyncingCloud, setIsSyncingCloud] = useState<boolean>(false);
   const [showEventsSyncIndicator, setShowEventsSyncIndicator] = useState<boolean>(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'info' | 'error' } | null>(null);
+
+  // Prompt the user to log in initially and before performing any actions
+  const [showLoginPrompt, setShowLoginPrompt] = useState<boolean>(false);
+  const [isInitialLoginPrompt, setIsInitialLoginPrompt] = useState<boolean>(true);
 
   // --- Beautiful Promise-based Confirm Modal state ---
   const [confirmState, setConfirmState] = useState<{
@@ -684,6 +689,10 @@ export default function App() {
       setAuthLoading(false);
       if (user) {
         await syncUserData(user);
+        setShowLoginPrompt(false);
+      } else {
+        setShowLoginPrompt(true);
+        setIsInitialLoginPrompt(true);
       }
     });
     return () => unsubscribe();
@@ -1110,7 +1119,17 @@ export default function App() {
     }
   };
 
+  const checkAuthAndPrompt = (): boolean => {
+    if (!currentUser) {
+      setIsInitialLoginPrompt(false);
+      setShowLoginPrompt(true);
+      return false;
+    }
+    return true;
+  };
+
   const handleToggleScheduleCompleted = async (id: string) => {
+    if (!checkAuthAndPrompt()) return;
     let triggeredEvent: BabyEvent | null = null;
     let targetSched: ScheduledReminder | null = null;
 
@@ -1172,6 +1191,7 @@ export default function App() {
   };
 
   const handleSnoozeReminder = async (id: string, minutes: number) => {
+    if (!checkAuthAndPrompt()) return;
     let targetSched: ScheduledReminder | null = null;
     
     setSchedules(prev => prev.map(sched => {
@@ -1224,6 +1244,7 @@ export default function App() {
 
   const handleAddSchedule = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!checkAuthAndPrompt()) return;
     if (!newScheduleTitle.trim()) return;
 
     const newRem: ScheduledReminder = {
@@ -1250,6 +1271,7 @@ export default function App() {
   };
 
   const handleDeleteSchedule = async (id: string) => {
+    if (!checkAuthAndPrompt()) return;
     const verified = await verifyActionPermission("delete schedule reminder");
     if (!verified) return;
 
@@ -1263,6 +1285,7 @@ export default function App() {
 
   const handleAddWeightLog = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!checkAuthAndPrompt()) return;
     const lbs = parseInt(newWeightLb, 10);
     const ozs = parseInt(newWeightOz, 10);
     if (isNaN(lbs) || isNaN(ozs) || !newWeightDate) return;
@@ -1291,6 +1314,7 @@ export default function App() {
   };
 
   const handleDeleteWeightLog = async (id: string) => {
+    if (!checkAuthAndPrompt()) return;
     const verified = await verifyActionPermission("delete weight measurement");
     if (!verified) return;
 
@@ -1304,6 +1328,7 @@ export default function App() {
 
   const handleAddGoal = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!checkAuthAndPrompt()) return;
     const targetVal = parseFloat(newGoalTarget);
     if (isNaN(targetVal) || !newGoalTitle.trim()) return;
 
@@ -1327,6 +1352,7 @@ export default function App() {
   };
 
   const handleDeleteGoal = async (id: string) => {
+    if (!checkAuthAndPrompt()) return;
     const verified = await verifyActionPermission("delete daily goal");
     if (!verified) return;
 
@@ -1339,6 +1365,7 @@ export default function App() {
   };
 
   const handleLoadDefaultGoals = async () => {
+    if (!checkAuthAndPrompt()) return;
     setGoals(INITIAL_GOALS);
     if (currentUser) {
       const activeId = linkedFamilyId || currentUser.uid;
@@ -1350,6 +1377,7 @@ export default function App() {
   };
 
   const handleSaveCoParentUpdate = async (noteStr: string, statusStr: string) => {
+    if (!checkAuthAndPrompt()) return;
     const timestamp = Date.now();
     setCoParentHandoverNote(noteStr);
     setCoParentActiveStatus(statusStr);
@@ -1382,6 +1410,7 @@ export default function App() {
   };
 
   const handleSendMessage = async (text: string) => {
+    if (!checkAuthAndPrompt()) return;
     if (!text.trim()) return;
 
     // Use current authenticated display name or email, or default to general parent
@@ -1412,6 +1441,7 @@ export default function App() {
   };
 
   const handleReactToMessage = async (messageId: string, emoji: string) => {
+    if (!checkAuthAndPrompt()) return;
     const currentUserId = currentUser ? currentUser.uid : 'local-parent';
     
     const updatedMessages = messages.map(msg => {
@@ -2090,6 +2120,7 @@ export default function App() {
 
   // Handle sleep/wake toggle
   const handleToggleSleep = async () => {
+    if (!checkAuthAndPrompt()) return;
     if (!isSleeping) {
       const nowStamp = Date.now();
       setIsSleeping(true);
@@ -2221,6 +2252,7 @@ export default function App() {
   // Add custom special instruction
   const handleAddInstruction = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!checkAuthAndPrompt()) return;
     if (!newInstructionText.trim()) return;
 
     const newInst: SpecialInstruction = {
@@ -2239,6 +2271,7 @@ export default function App() {
   };
 
   const handleDeleteInstruction = async (id: string) => {
+    if (!checkAuthAndPrompt()) return;
     const verified = await verifyActionPermission("delete instruction");
     if (!verified) return;
 
@@ -2253,6 +2286,7 @@ export default function App() {
 
   // Log savers
   const handleSaveEvent = async (eventPayload: Omit<BabyEvent, 'id' | 'timestamp'>) => {
+    if (!checkAuthAndPrompt()) return;
     const newEvent: BabyEvent = {
       ...eventPayload,
       id: `e-${Date.now()}`,
@@ -2267,6 +2301,7 @@ export default function App() {
   };
 
   const handleSaveFood = async (foodPayload: Omit<FoodDiaryEntry, 'id' | 'timestamp'>) => {
+    if (!checkAuthAndPrompt()) return;
     const newFood: FoodDiaryEntry = {
       ...foodPayload,
       id: `f-${Date.now()}`,
@@ -2281,6 +2316,7 @@ export default function App() {
   };
 
   const handleDeleteEvent = async (id: string) => {
+    if (!checkAuthAndPrompt()) return;
     const verified = await verifyActionPermission("delete timeline event");
     if (!verified) return;
 
@@ -2293,6 +2329,7 @@ export default function App() {
   };
 
   const handleDeleteFood = async (id: string) => {
+    if (!checkAuthAndPrompt()) return;
     const verified = await verifyActionPermission("delete food entry");
     if (!verified) return;
 
@@ -4958,6 +4995,15 @@ export default function App() {
           onClose={() => setShowDownloadModal(false)}
           onTriggerInstall={handleTriggerPwaInstall}
           isInstallAvailable={!!deferredPrompt}
+        />
+      )}
+
+      {/* --- INITIAL & ACTION LOGGING LOGIN PROMPT MODAL --- */}
+      {showLoginPrompt && (
+        <LoginPromptModal 
+          onClose={() => setShowLoginPrompt(false)}
+          onLogin={handleGoogleLogin}
+          isInitial={isInitialLoginPrompt}
         />
       )}
 
