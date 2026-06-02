@@ -54,7 +54,7 @@ Guidelines:
 `;
 
       const response = await ai.models.generateContent({
-        model: "gemini-2.0-flash",
+        model: "gemini-3.5-flash",
         contents: prompt,
         config: {
           systemInstruction: "You are an encouraging and loving pediatric specialist and assistant who helps parent evaluate their baby's sleep, eating, and growth routines."
@@ -105,7 +105,7 @@ Instructions:
 `;
 
       const response = await ai.models.generateContent({
-        model: "gemini-2.0-flash",
+        model: "gemini-3.5-flash",
         contents: prompt,
         config: {
           systemInstruction: "You are a professional pediatric consultant who provides intelligence about infant feeding patterns. Always return a perfectly structured JSON object matching the requested schema.",

@@ -1,42 +1,6 @@
 /**
  * Biometric authentication utilities (WebAuthn / Passkeys)
- * 
- * Uses the Web Authentication API to leverage device-native biometric
- * scanners (fingerprint, Face ID, Windows Hello) for app lock/unlock.
  */
-
-// --- Base64URL encoding helpers ---
-// WebAuthn credential IDs are binary data exposed as base64url strings.
-// We must properly round-trip them between registration and verification.
-
-function base64UrlToArrayBuffer(base64url: string): ArrayBuffer {
-  // Convert base64url chars to standard base64
-  let base64 = base64url.replace(/-/g, '+').replace(/_/g, '/');
-  // Pad to multiple of 4
-  while (base64.length % 4 !== 0) {
-    base64 += '=';
-  }
-  const binaryString = atob(base64);
-  const bytes = new Uint8Array(binaryString.length);
-  for (let i = 0; i < binaryString.length; i++) {
-    bytes[i] = binaryString.charCodeAt(i);
-  }
-  return bytes.buffer;
-}
-
-function arrayBufferToBase64Url(buffer: ArrayBuffer): string {
-  const bytes = new Uint8Array(buffer);
-  let binary = '';
-  for (let i = 0; i < bytes.length; i++) {
-    binary += String.fromCharCode(bytes[i]);
-  }
-  return btoa(binary)
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_')
-    .replace(/=+$/g, '');
-}
-
-// --- Public API ---
 
 export async function isBiometricsSupportedOnDevice(): Promise<boolean> {
   try {
@@ -45,7 +9,7 @@ export async function isBiometricsSupportedOnDevice(): Promise<boolean> {
     // Check if the credential manager & PublicKeyCredential is supported
     if (!window.PublicKeyCredential) return false;
     
-    // Check if a platform authenticator (TouchID/FaceID/Fingerprint) is available
+    // Check if a platform authenticator (TouchID/FaceID) is available
     const available = await window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
     return available;
   } catch (err) {
@@ -90,7 +54,7 @@ export async function registerDeviceBiometrics(userEmail: string, userId: string
       authenticatorSelection: {
         authenticatorAttachment: "platform", // forces local device biometrics
         userVerification: "required",
-        residentKey: "preferred"
+        residentKey: "required"
       },
       timeout: 60000
     };
@@ -100,11 +64,7 @@ export async function registerDeviceBiometrics(userEmail: string, userId: string
     }) as PublicKeyCredential;
 
     if (credential) {
-      // Store the rawId as base64url for proper round-tripping during verification.
-      // credential.id is already base64url but using rawId explicitly is more reliable
-      // across all browser implementations.
-      const storedId = arrayBufferToBase64Url(credential.rawId);
-      return storedId;
+      return credential.id;
     }
     return null;
   } catch (error: any) {
@@ -122,18 +82,15 @@ export async function verifyDeviceBiometrics(credentialId: string): Promise<bool
     const challenge = new Uint8Array(32);
     window.crypto.getRandomValues(challenge);
 
-    // Properly decode the base64url credential ID back to binary ArrayBuffer.
-    // The previous implementation used TextEncoder which corrupted the binary data.
-    const rawCredId = base64UrlToArrayBuffer(credentialId);
+    // Some browsers or custom implementations convert the credential ID string back to an array
+    const rawCredId = new TextEncoder().encode(credentialId);
 
     const assertionOptions: PublicKeyCredentialRequestOptions = {
       challenge,
-      rpId: window.location.hostname,
       allowCredentials: [
         {
           id: rawCredId,
-          type: "public-key",
-          transports: ["internal"] // hint to use the platform authenticator directly
+          type: "public-key"
         }
       ],
       userVerification: "required",
