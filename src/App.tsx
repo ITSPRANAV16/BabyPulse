@@ -1282,6 +1282,16 @@ export default function App() {
       
       const delegateUrl = `${previewBase}/?action=oauth-delegate-login&parentOrigin=${encodeURIComponent(window.location.origin)}`;
       
+      // Detect mobile devices to use secure redirect instead of popup
+      const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+      if (isMobile) {
+        showToast("Redirecting to secure login gateway...", "info");
+        setTimeout(() => {
+          window.location.href = delegateUrl;
+        }, 800);
+        return;
+      }
+
       const width = 500;
       const height = 650;
       const left = window.screen.width / 2 - width / 2;
@@ -1294,7 +1304,10 @@ export default function App() {
       );
       
       if (!authPopup) {
-        showToast("Popup Blocked! Please authorize popups for this dashboard page to enable sync.", "error");
+        showToast("Popup blocked. Redirecting securely in this tab...", "info");
+        setTimeout(() => {
+          window.location.href = delegateUrl;
+        }, 800);
       }
       return;
     }
