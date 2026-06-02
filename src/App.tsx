@@ -95,9 +95,10 @@ import { printPediatricianReport } from './utils/printReport';
 import { CloudAuthGateway } from './components/CloudAuthGateway';
 
 // Google Sign-In & Security integrations
-import { auth } from './firebase';
+import { auth, db } from './firebase';
 import { onAuthStateChanged, User, getRedirectResult } from 'firebase/auth';
-import { safeSetDoc, safeDeleteDoc } from './utils/firestoreHelpers';
+import { onSnapshot, collection, doc } from 'firebase/firestore';
+import { safeSetDoc, safeDeleteDoc, OperationType, handleFirestoreError } from './utils/firestoreHelpers';
 import { loginWithGoogle, logoutUser, loadUserDataFromCloud, uploadLocalDataToCloud } from './utils/firebaseSync';
 import { isBiometricsSupportedOnDevice, registerDeviceBiometrics, verifyDeviceBiometrics } from './utils/biometrics';
 
@@ -564,6 +565,69 @@ export default function App() {
     });
     return () => unsubscribe();
   }, []);
+
+  // Real-time synchronization for multi-device support (laptop & mobile)
+  useEffect(() => {
+    if (!currentUser) return;
+
+    const unsubscribes: (() => void)[] = [];
+
+    // 1. Profile document (updates baby dob, name, and live sleep stage timers)
+    const unsubProfile = onSnapshot(
+      doc(db, 'users', currentUser.uid),
+      (docSnap) => {
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          if (data.babyName) setBabyName(data.babyName);
+          if (data.babyDob) setBabyDob(data.babyDob);
+          if (data.isSleeping !== undefined) setIsSleeping(data.isSleeping);
+          if (data.sleepStartTime !== undefined) setSleepStartTime(data.sleepStartTime);
+        }
+      },
+      (error) => {
+        // Handle gracefully; some permissions or network shifts can throw transient errors
+        console.warn("Realtime sync issue (profile):", error.message);
+      }
+    );
+    unsubscribes.push(unsubProfile);
+
+    // Setup subpath collection sync with filter logic to block pre-loaded base demo records
+    const setupCollectionSync = (
+      subPath: string,
+      setter: (data: any[]) => void,
+      sortFn?: (a: any, b: any) => number
+    ) => {
+      const colRef = collection(db, 'users', currentUser.uid, subPath);
+      return onSnapshot(
+        colRef,
+        (snapshot) => {
+          const list: any[] = [];
+          snapshot.forEach((docSnap) => {
+            list.push({ ...docSnap.data(), id: docSnap.id });
+          });
+          // Avoid recreating default demo preloads if deleted
+          const filtered = list.filter(item => 
+            !['e1', 'e2', 'e3', 'e4', 'f1', 'f2', 'f3', 's-rem-1', 's-rem-2', 's-rem-3', 'w-1', 'w-2', 'w-3', 'w-4', 'w-5', 'w-6', 'g-1', 'g-2', 'g-3', 'g-4'].includes(item.id)
+          );
+          setter(sortFn ? filtered.sort(sortFn) : filtered);
+        },
+        (error) => {
+          console.warn(`Realtime sync issue (${subPath}):`, error.message);
+        }
+      );
+    };
+
+    unsubscribes.push(setupCollectionSync('events', setEvents, (a, b) => b.timestamp - a.timestamp));
+    unsubscribes.push(setupCollectionSync('foods', setFoods, (a, b) => b.timestamp - a.timestamp));
+    unsubscribes.push(setupCollectionSync('instructions', setInstructions));
+    unsubscribes.push(setupCollectionSync('schedules', setSchedules));
+    unsubscribes.push(setupCollectionSync('weightLogs', setWeightLogs, (a, b) => a.timestamp - b.timestamp));
+    unsubscribes.push(setupCollectionSync('goals', setGoals));
+
+    return () => {
+      unsubscribes.forEach((unsub) => unsub());
+    };
+  }, [currentUser]);
 
   // Helper to complete sign-in from a delegated secure gateway
   const signInWithDelegatedToken = async (
