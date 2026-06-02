@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>BabyPulse - Smart Baby Routine &amp; Food Tracker</title>
+    <link rel="manifest" href="/manifest.json" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="theme-color" content="#0ea5e9" />
+    <script>
+      // Mitigate environments (e.g. sandboxed iframes, browser extensions, or test runners) 
+      // where window.fetch is read-only but some third-party libraries attempt to assign/override it.
+      try {
+        if (typeof window !== 'undefined' && 'fetch' in window) {
+          const originalFetch = window.fetch;
+          let currentFetch = originalFetch;
+          Object.defineProperty(window, 'fetch', {
+            configurable: true,
+            enumerable: true,
+            get() {
+              return currentFetch;
+            },
+            set(v) {
+              currentFetch = v;
+            }
+          });
+        }
+      } catch (e) {
+        console.warn('Could not define configurable window.fetch:', e);
+      }
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+

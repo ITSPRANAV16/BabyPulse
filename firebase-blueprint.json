@@ -1,0 +1,153 @@
+{
+  "entities": {
+    "UserAccount": {
+      "title": "User Account",
+      "description": "User profile with baby name and preferences",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "babyName": { "type": "string" },
+        "babyDob": { "type": "string" },
+        "isSleeping": { "type": "boolean" },
+        "sleepStartTime": { "type": "number" },
+        "hasBiometricsEnabled": { "type": "boolean" },
+        "biometricCredentialId": { "type": "string" }
+      },
+      "required": ["userId"]
+    },
+    "BabyEvent": {
+      "title": "Baby Event",
+      "description": "Sleep, feed, care, or diaper logs",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "type": { "type": "string", "enum": ["sleep", "feed", "diaper", "care"] },
+        "title": { "type": "string" },
+        "time": { "type": "string" },
+        "ampm": { "type": "string", "enum": ["AM", "PM"] },
+        "date": { "type": "string" },
+        "timestamp": { "type": "number" },
+        "mood": { "type": "string", "enum": ["Happy", "Calm", "Fussing", "Crying"] },
+        "feedType": { "type": "string" },
+        "amountOz": { "type": "number" },
+        "amountMl": { "type": "number" },
+        "temp": { "type": "string" },
+        "durationMinutes": { "type": "number" },
+        "notes": { "type": "string" },
+        "isWet": { "type": "boolean" },
+        "isDirty": { "type": "boolean" },
+        "diaperNotes": { "type": "string" }
+      },
+      "required": ["id", "type", "title", "time", "ampm", "date", "timestamp"]
+    },
+    "FoodDiaryEntry": {
+      "title": "Food Diary Entry",
+      "description": "Solid food feeding session log",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "mealType": { "type": "string", "enum": ["Breakfast", "Lunch", "Snack"] },
+        "time": { "type": "string" },
+        "ampm": { "type": "string", "enum": ["AM", "PM"] },
+        "date": { "type": "string" },
+        "timestamp": { "type": "number" },
+        "itemName": { "type": "string" },
+        "portion": { "type": "string" },
+        "reaction": { "type": "string", "enum": ["loved_it", "ate_some", "not_a_fan"] },
+        "texture": { "type": "string" },
+        "isFavorite": { "type": "boolean" }
+      },
+      "required": ["id", "mealType", "time", "ampm", "date", "timestamp", "itemName", "reaction"]
+    },
+    "SpecialInstruction": {
+      "title": "Special Instruction",
+      "description": "Medical or schedule instructions",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "type": { "type": "string", "enum": ["medical", "schedule", "routine"] },
+        "text": { "type": "string" }
+      },
+      "required": ["id", "type", "text"]
+    },
+    "ScheduledReminder": {
+      "title": "Scheduled Reminder",
+      "description": "Feeding or medication alarms",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "type": { "type": "string", "enum": ["feed", "medication"] },
+        "title": { "type": "string" },
+        "time": { "type": "string" },
+        "ampm": { "type": "string", "enum": ["AM", "PM"] },
+        "amountOz": { "type": "number" },
+        "notes": { "type": "string" },
+        "isActive": { "type": "boolean" }
+      },
+      "required": ["id", "type", "title", "time", "ampm"]
+    },
+    "WeightLog": {
+      "title": "Weight Log",
+      "description": "Baby weight measurements",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "weightLb": { "type": "number" },
+        "weightOz": { "type": "number" },
+        "date": { "type": "string" },
+        "timestamp": { "type": "number" },
+        "notes": { "type": "string" }
+      },
+      "required": ["id", "weightLb", "weightOz", "date", "timestamp"]
+    },
+    "DailyGoal": {
+      "title": "Daily Goal",
+      "description": "Daily feed or sleep targets",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "category": { "type": "string", "enum": ["feed_oz", "sleep_hrs", "solid_meals"] },
+        "title": { "type": "string" },
+        "target": { "type": "string" },
+        "unit": { "type": "string" }
+      },
+      "required": ["id", "category", "title", "target", "unit"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "UserAccount",
+      "description": "The user account details mapped by auth.uid"
+    },
+    "/users/{userId}/events/{eventId}": {
+      "schema": "BabyEvent",
+      "description": "Events associated with user's baby"
+    },
+    "/users/{userId}/foods/{foodId}": {
+      "schema": "FoodDiaryEntry",
+      "description": "Food entries associated with user's baby"
+    },
+    "/users/{userId}/instructions/{instId}": {
+      "schema": "SpecialInstruction",
+      "description": "Special medical/routine instructions"
+    },
+    "/users/{userId}/schedules/{reminderId}": {
+      "schema": "ScheduledReminder",
+      "description": "Feeding and medication reminder schedules"
+    },
+    "/users/{userId}/weightLogs/{weightId}": {
+      "schema": "WeightLog",
+      "description": "Weight history logs"
+    },
+    "/users/{userId}/goals/{goalId}": {
+      "schema": "DailyGoal",
+      "description": "Daily care and feeding targets"
+    }
+  }
+}

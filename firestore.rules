@@ -1,0 +1,122 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Common helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // Entity validation functions
+    function isValidUserAccount(data) {
+      return data.userId is string && data.userId.size() <= 128;
+    }
+
+    function isValidBabyEvent(data) {
+      return data.id is string && data.id.size() <= 128
+        && data.type is string && (data.type == 'sleep' || data.type == 'feed' || data.type == 'diaper' || data.type == 'care')
+        && data.title is string && data.title.size() <= 128
+        && data.time is string && data.time.size() <= 10
+        && data.ampm is string && (data.ampm == 'AM' || data.ampm == 'PM')
+        && data.date is string && data.date.size() <= 15
+        && data.timestamp is number;
+    }
+
+    function isValidFoodDiaryEntry(data) {
+      return data.id is string && data.id.size() <= 128
+        && data.mealType is string && (data.mealType == 'Breakfast' || data.mealType == 'Lunch' || data.mealType == 'Snack')
+        && data.time is string && data.time.size() <= 10
+        && data.ampm is string && (data.ampm == 'AM' || data.ampm == 'PM')
+        && data.date is string && data.date.size() <= 15
+        && data.timestamp is number
+        && data.itemName is string && data.itemName.size() <= 200
+        && data.reaction is string && (data.reaction == 'loved_it' || data.reaction == 'ate_some' || data.reaction == 'not_a_fan');
+    }
+
+    function isValidSpecialInstruction(data) {
+      return data.id is string && data.id.size() <= 128
+        && data.type is string && (data.type == 'medical' || data.type == 'schedule' || data.type == 'routine')
+        && data.text is string && data.text.size() <= 1000;
+    }
+
+    function isValidScheduledReminder(data) {
+      return data.id is string && data.id.size() <= 128
+        && data.type is string && (data.type == 'feed' || data.type == 'medication')
+        && data.title is string && data.title.size() <= 128
+        && data.time is string && data.time.size() <= 10
+        && data.ampm is string && (data.ampm == 'AM' || data.ampm == 'PM');
+    }
+
+    function isValidWeightLog(data) {
+      return data.id is string && data.id.size() <= 128
+        && data.weightLb is number
+        && data.weightOz is number
+        && data.date is string && data.date.size() <= 15
+        && data.timestamp is number;
+    }
+
+    function isValidDailyGoal(data) {
+      return data.id is string && data.id.size() <= 128
+        && data.category is string && (data.category == 'feed_oz' || data.category == 'sleep_hrs' || data.category == 'solid_meals')
+        && data.title is string && data.title.size() <= 128
+        && data.target is string && data.target.size() <= 20
+        && data.unit is string && data.unit.size() <= 10;
+    }
+
+    // Path definitions
+    match /users/{userId} {
+      allow read: if isOwner(userId);
+      allow create, update: if isOwner(userId) && isValidId(userId) && isValidUserAccount(request.resource.data);
+      allow delete: if isOwner(userId);
+
+      match /events/{eventId} {
+        allow read: if isOwner(userId);
+        allow create, update: if isOwner(userId) && isValidId(eventId) && isValidBabyEvent(request.resource.data);
+        allow delete: if isOwner(userId);
+      }
+
+      match /foods/{foodId} {
+        allow read: if isOwner(userId);
+        allow create, update: if isOwner(userId) && isValidId(foodId) && isValidFoodDiaryEntry(request.resource.data);
+        allow delete: if isOwner(userId);
+      }
+
+      match /instructions/{instId} {
+        allow read: if isOwner(userId);
+        allow create, update: if isOwner(userId) && isValidId(instId) && isValidSpecialInstruction(request.resource.data);
+        allow delete: if isOwner(userId);
+      }
+
+      match /schedules/{reminderId} {
+        allow read: if isOwner(userId);
+        allow create, update: if isOwner(userId) && isValidId(reminderId) && isValidScheduledReminder(request.resource.data);
+        allow delete: if isOwner(userId);
+      }
+
+      match /weightLogs/{weightId} {
+        allow read: if isOwner(userId);
+        allow create, update: if isOwner(userId) && isValidId(weightId) && isValidWeightLog(request.resource.data);
+        allow delete: if isOwner(userId);
+      }
+
+      match /goals/{goalId} {
+        allow read: if isOwner(userId);
+        allow create, update: if isOwner(userId) && isValidId(goalId) && isValidDailyGoal(request.resource.data);
+        allow delete: if isOwner(userId);
+      }
+    }
+  }
+}

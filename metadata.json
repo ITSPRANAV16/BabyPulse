@@ -1,0 +1,6 @@
+{
+  "name": "BabyPulse",
+  "description": "A comprehensive baby routine, solid food diary, event timeline, care briefing, and smart analytics app.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

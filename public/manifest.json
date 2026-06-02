@@ -1,0 +1,22 @@
+{
+  "short_name": "BabyPulse",
+  "name": "BabyPulse Diaries & Feeding Analytics",
+  "icons": [
+    {
+      "src": "https://img.icons8.com/color/512/baby-bottle.png",
+      "type": "image/png",
+      "sizes": "512x512",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "https://img.icons8.com/color/192/baby-bottle.png",
+      "type": "image/png",
+      "sizes": "192x192"
+    }
+  ],
+  "start_url": "/",
+  "background_color": "#F8FAFC",
+  "theme_color": "#0ea5e9",
+  "display": "standalone",
+  "orientation": "portrait"
+}
