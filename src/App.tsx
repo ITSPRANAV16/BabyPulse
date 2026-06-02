@@ -4,6 +4,22 @@
  */
 
 import React, { useState, useEffect } from 'react';
+import { AnimatePresence, motion } from 'motion/react';
+
+const tabVariants = {
+  enter: (direction: 'left' | 'right') => ({
+    x: direction === 'right' ? 30 : -30,
+    opacity: 0
+  }),
+  center: {
+    x: 0,
+    opacity: 1
+  },
+  exit: (direction: 'left' | 'right') => ({
+    x: direction === 'right' ? -30 : 30,
+    opacity: 0
+  })
+};
 import { 
   ChevronLeft, 
   ChevronRight, 
@@ -225,6 +241,18 @@ export default function App() {
   
   // Tab states
   const [activeTab, setActiveTab] = useState<'today' | 'timeline' | 'food' | 'trends' | 'care'>('today');
+  const [slideDirection, setSlideDirection] = useState<'left' | 'right'>('right');
+  const [prevTab, setPrevTab] = useState<'today' | 'timeline' | 'food' | 'trends' | 'care'>('today');
+
+  useEffect(() => {
+    const TAB_ORDER: ('today' | 'timeline' | 'food' | 'trends' | 'care')[] = ['today', 'timeline', 'food', 'trends', 'care'];
+    const prevIndex = TAB_ORDER.indexOf(prevTab);
+    const currentIndex = TAB_ORDER.indexOf(activeTab);
+    if (currentIndex !== prevIndex) {
+      setSlideDirection(currentIndex > prevIndex ? 'right' : 'left');
+      setPrevTab(activeTab);
+    }
+  }, [activeTab, prevTab]);
 
   // Interactive Live sleep timer state
   const [isSleeping, setIsSleeping] = useState<boolean>(false);
@@ -2407,9 +2435,19 @@ export default function App() {
           );
         })()}
 
-        {/* ----------------- TAB 1: TODAY / OVERVIEW ----------------- */}
-        {activeTab === 'today' && (
-          <div className="space-y-6 animate-fadeIn">
+        <AnimatePresence mode="wait" initial={false}>
+          {/* ----------------- TAB 1: TODAY / OVERVIEW ----------------- */}
+          {activeTab === 'today' && (
+            <motion.div
+              key="today"
+              custom={slideDirection}
+              variants={tabVariants}
+              initial="enter"
+              animate="center"
+              exit="exit"
+              transition={{ type: "tween", ease: "easeInOut", duration: 0.25 }}
+              className="space-y-6"
+            >
             
             {/* Countdown card */}
             <section className={`rounded-[32px] shadow-[0_8px_32px_rgba(28,100,142,0.04)] p-6 relative overflow-hidden border transition-all duration-1000 ${
@@ -2923,12 +2961,21 @@ export default function App() {
               </div>
             </section>
 
-          </div>
-        )}
+            </motion.div>
+          )}
 
-        {/* ----------------- TAB 2: TIMELINE ----------------- */}
-        {activeTab === 'timeline' && (
-          <div className="space-y-6 animate-fadeIn">
+          {/* ----------------- TAB 2: TIMELINE ----------------- */}
+          {activeTab === 'timeline' && (
+            <motion.div
+              key="timeline"
+              custom={slideDirection}
+              variants={tabVariants}
+              initial="enter"
+              animate="center"
+              exit="exit"
+              transition={{ type: "tween", ease: "easeInOut", duration: 0.25 }}
+              className="space-y-6"
+            >
             
             {/* List with vertical indicator line */}
             <section className="relative">
@@ -3030,12 +3077,21 @@ export default function App() {
               </div>
             </section>
 
-          </div>
-        )}
+            </motion.div>
+          )}
 
-        {/* ----------------- TAB 3: SOLID FOOD DIARY ----------------- */}
-        {activeTab === 'food' && (
-          <div className="space-y-6 animate-fadeIn">
+          {/* ----------------- TAB 3: SOLID FOOD DIARY ----------------- */}
+          {activeTab === 'food' && (
+            <motion.div
+              key="food"
+              custom={slideDirection}
+              variants={tabVariants}
+              initial="enter"
+              animate="center"
+              exit="exit"
+              transition={{ type: "tween", ease: "easeInOut", duration: 0.25 }}
+              className="space-y-6"
+            >
             
             {/* Quick overview metric cards */}
             <section className="grid grid-cols-2 gap-4">
@@ -3125,12 +3181,21 @@ export default function App() {
               </div>
             </section>
 
-          </div>
-        )}
+            </motion.div>
+          )}
 
-        {/* ----------------- TAB 4: TRENDS / ANALYTICS ----------------- */}
-        {activeTab === 'trends' && (
-          <div className="space-y-6 animate-fadeIn">
+          {/* ----------------- TAB 4: TRENDS / ANALYTICS ----------------- */}
+          {activeTab === 'trends' && (
+            <motion.div
+              key="trends"
+              custom={slideDirection}
+              variants={tabVariants}
+              initial="enter"
+              animate="center"
+              exit="exit"
+              transition={{ type: "tween", ease: "easeInOut", duration: 0.25 }}
+              className="space-y-6"
+            >
             
             <section className="flex flex-col gap-1">
               <h2 className="font-bold text-lg text-neutral-900 dark:text-slate-100">Smart Analytics</h2>
@@ -3679,12 +3744,21 @@ export default function App() {
               </div>
             </section>
 
-          </div>
-        )}
+            </motion.div>
+          )}
 
-        {/* ----------------- TAB 5: CARE / DAILY SUMMARY ----------------- */}
-        {activeTab === 'care' && (
-          <div className="space-y-6 animate-fadeIn">
+          {/* ----------------- TAB 5: CARE / DAILY SUMMARY ----------------- */}
+          {activeTab === 'care' && (
+            <motion.div
+              key="care"
+              custom={slideDirection}
+              variants={tabVariants}
+              initial="enter"
+              animate="center"
+              exit="exit"
+              transition={{ type: "tween", ease: "easeInOut", duration: 0.25 }}
+              className="space-y-6"
+            >
             
             <section className="flex flex-col gap-1">
               <h2 className="font-bold text-lg text-neutral-900">Daily Briefing</h2>
@@ -4063,8 +4137,9 @@ export default function App() {
               </p>
             </section>
 
-          </div>
-        )}
+            </motion.div>
+          )}
+        </AnimatePresence>
 
       </main>
 

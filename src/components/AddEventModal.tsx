@@ -3,8 +3,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
-import { X, Clock, GlassWater, Bed, Trash2, ShieldAlert } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import { X, Clock, GlassWater, Bed, Trash2, ShieldAlert, Mic, MicOff } from 'lucide-react';
 import { BabyEvent, EventType } from '../types';
 
 interface AddEventModalProps {
@@ -57,6 +57,76 @@ export function AddEventModal({ isOpen, onClose, onSave, initialType = 'sleep', 
 
   // Mood selection state (available to all types)
   const [mood, setMood] = useState<'Happy' | 'Calm' | 'Fussing' | 'Crying'>('Happy');
+
+  const [isListening, setIsListening] = useState<boolean>(false);
+  const [activeListenField, setActiveListenField] = useState<string | null>(null);
+  const recognitionRef = useRef<any>(null);
+
+  const toggleListening = (fieldName: 'sleep' | 'diaper' | 'care') => {
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      alert("Speech recognition is not supported in this browser. Please try Chrome or Safari.");
+      return;
+    }
+
+    if (isListening) {
+      if (recognitionRef.current) {
+        recognitionRef.current.stop();
+      }
+      setIsListening(false);
+      setActiveListenField(null);
+      if (activeListenField === fieldName) {
+        return;
+      }
+    }
+
+    const recognition = new SpeechRecognition();
+    recognition.continuous = false;
+    recognition.interimResults = false;
+    recognition.lang = 'en-US';
+
+    recognition.onstart = () => {
+      setIsListening(true);
+      setActiveListenField(fieldName);
+    };
+
+    recognition.onresult = (event: any) => {
+      const transcript = event.results[0][0].transcript;
+      if (fieldName === 'sleep') {
+        setSleepNotes((prev) => (prev ? `${prev} ${transcript}` : transcript));
+      } else if (fieldName === 'diaper') {
+        setDiaperNotes((prev) => (prev ? `${prev} ${transcript}` : transcript));
+      } else if (fieldName === 'care') {
+        setCareNotes((prev) => (prev ? `${prev} ${transcript}` : transcript));
+      }
+    };
+
+    recognition.onerror = (event: any) => {
+      console.warn('Speech recognition error:', event.error);
+      setIsListening(false);
+      setActiveListenField(null);
+    };
+
+    recognition.onend = () => {
+      setIsListening(false);
+      setActiveListenField(null);
+    };
+
+    recognitionRef.current = recognition;
+    try {
+      recognition.start();
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      if (recognitionRef.current) {
+        recognitionRef.current.stop();
+      }
+    };
+  }, []);
 
   if (!isOpen) return null;
 
@@ -208,7 +278,30 @@ export function AddEventModal({ isOpen, onClose, onSave, initialType = 'sleep', 
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-neutral-600 mb-1">Nap Description/Notes</label>
+                <div className="flex justify-between items-center mb-1">
+                  <label className="block text-xs font-bold text-neutral-600">Nap Description/Notes</label>
+                  <button
+                    type="button"
+                    onClick={() => toggleListening('sleep')}
+                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold tracking-tight transition-all border ${
+                      isListening && activeListenField === 'sleep'
+                        ? 'bg-red-500 border-red-600 text-white animate-pulse'
+                        : 'bg-neutral-100 hover:bg-neutral-200 border-neutral-200 text-neutral-600 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700'
+                    }`}
+                  >
+                    {isListening && activeListenField === 'sleep' ? (
+                      <>
+                        <MicOff size={11} className="animate-bounce" />
+                        <span>Listening...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Mic size={11} />
+                        <span>Speak Notes</span>
+                      </>
+                    )}
+                  </button>
+                </div>
                 <textarea
                   value={sleepNotes}
                   onChange={(e) => setSleepNotes(e.target.value)}
@@ -320,7 +413,30 @@ export function AddEventModal({ isOpen, onClose, onSave, initialType = 'sleep', 
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-neutral-600 mb-1">Diaper Notes</label>
+                <div className="flex justify-between items-center mb-1">
+                  <label className="block text-xs font-bold text-neutral-600">Diaper Notes</label>
+                  <button
+                    type="button"
+                    onClick={() => toggleListening('diaper')}
+                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold tracking-tight transition-all border ${
+                      isListening && activeListenField === 'diaper'
+                        ? 'bg-red-500 border-red-600 text-white animate-pulse'
+                        : 'bg-neutral-100 hover:bg-neutral-200 border-neutral-200 text-neutral-600 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700'
+                    }`}
+                  >
+                    {isListening && activeListenField === 'diaper' ? (
+                      <>
+                        <MicOff size={11} className="animate-bounce" />
+                        <span>Listening...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Mic size={11} />
+                        <span>Speak Notes</span>
+                      </>
+                    )}
+                  </button>
+                </div>
                 <input
                   type="text"
                   value={diaperNotes}
@@ -347,7 +463,30 @@ export function AddEventModal({ isOpen, onClose, onSave, initialType = 'sleep', 
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-neutral-600 mb-1">Observation / Details</label>
+                <div className="flex justify-between items-center mb-1">
+                  <label className="block text-xs font-bold text-neutral-600">Observation / Details</label>
+                  <button
+                    type="button"
+                    onClick={() => toggleListening('care')}
+                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold tracking-tight transition-all border ${
+                      isListening && activeListenField === 'care'
+                        ? 'bg-red-500 border-red-600 text-white animate-pulse'
+                        : 'bg-neutral-100 hover:bg-neutral-200 border-neutral-200 text-neutral-600 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700'
+                    }`}
+                  >
+                    {isListening && activeListenField === 'care' ? (
+                      <>
+                        <MicOff size={11} className="animate-bounce" />
+                        <span>Listening...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Mic size={11} />
+                        <span>Speak Notes</span>
+                      </>
+                    )}
+                  </button>
+                </div>
                 <textarea
                   value={careNotes}
                   onChange={(e) => setCareNotes(e.target.value)}
