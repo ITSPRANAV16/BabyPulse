@@ -3182,7 +3182,7 @@ export default function App() {
                 <div>
                   <span className="inline-flex items-center gap-1.5 bg-purple-50 dark:bg-purple-950/55 text-purple-700 dark:text-purple-300 text-[10px] font-bold px-3 py-1 rounded-full border border-purple-100 dark:border-purple-900/80 font-mono">
                     <span className="w-1.5 h-1.5 rounded-full bg-purple-500 animate-ping"></span>
-                    Gemini 3.5 Flash
+                    Gemini 2.0 Flash
                   </span>
                 </div>
               </div>
