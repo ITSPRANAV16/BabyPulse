@@ -435,13 +435,14 @@ export default function App() {
       const cloudInstructions = (cloudData?.instructions || []).filter(inst => !['s1', 's2'].includes(inst.id));
       const cloudSchedules = (cloudData?.schedules || []).filter(s => !['s-rem-1', 's-rem-2', 's-rem-3'].includes(s.id));
       const cloudWeightLogs = (cloudData?.weightLogs || []).filter(w => !['w-1', 'w-2', 'w-3', 'w-4', 'w-5', 'w-6'].includes(w.id));
-      const cloudGoals = (cloudData?.goals || []).filter(g => !['g-1', 'g-2', 'g-3', 'g-4'].includes(g.id));
+      const cloudGoals = cloudData?.goals || [];
 
       if (cloudData && (
         cloudEvents.length > 0 || 
         cloudFoods.length > 0 ||
         cloudWeightLogs.length > 0 ||
-        cloudSchedules.length > 0
+        cloudSchedules.length > 0 ||
+        cloudGoals.length > 0
       )) {
         // Load downloaded data
         if (cloudData.babyName) setBabyName(cloudData.babyName);
@@ -471,7 +472,7 @@ export default function App() {
         const filteredInstructions = instructions.filter(inst => !['s1', 's2'].includes(inst.id));
         const filteredSchedules = schedules.filter(s => !['s-rem-1', 's-rem-2', 's-rem-3'].includes(s.id));
         const filteredWeightLogs = weightLogs.filter(w => !['w-1', 'w-2', 'w-3', 'w-4', 'w-5', 'w-6'].includes(w.id));
-        const filteredGoals = goals.filter(g => !['g-1', 'g-2', 'g-3', 'g-4'].includes(g.id));
+        const filteredGoals = goals;
 
         // Update the React states immediately to wipe the demo data!
         setEvents(filteredEvents);
@@ -607,7 +608,7 @@ export default function App() {
           });
           // Avoid recreating default demo preloads if deleted
           const filtered = list.filter(item => 
-            !['e1', 'e2', 'e3', 'e4', 'f1', 'f2', 'f3', 's-rem-1', 's-rem-2', 's-rem-3', 'w-1', 'w-2', 'w-3', 'w-4', 'w-5', 'w-6', 'g-1', 'g-2', 'g-3', 'g-4'].includes(item.id)
+            !['e1', 'e2', 'e3', 'e4', 'f1', 'f2', 'f3', 's-rem-1', 's-rem-2', 's-rem-3', 'w-1', 'w-2', 'w-3', 'w-4', 'w-5', 'w-6'].includes(item.id)
           );
           setter(sortFn ? filtered.sort(sortFn) : filtered);
         },
@@ -1100,6 +1101,16 @@ export default function App() {
     if (currentUser) {
       await safeDeleteDoc(`users/${currentUser.uid}/goals`, id);
     }
+  };
+
+  const handleLoadDefaultGoals = async () => {
+    setGoals(INITIAL_GOALS);
+    if (currentUser) {
+      for (const g of INITIAL_GOALS) {
+        await safeSetDoc(`users/${currentUser.uid}/goals`, g.id, { ...g, userId: currentUser.uid });
+      }
+    }
+    showToast("Loaded default daily goals successfully!", "success");
   };
 
   const handleUpdateManualGoalProgress = async (goalId: string, change: number) => {
@@ -3028,7 +3039,7 @@ export default function App() {
                     <p className="text-xs text-neutral-400 italic">No daily goals configured for the tracker.</p>
                     <button
                       type="button"
-                      onClick={() => setGoals(INITIAL_GOALS)}
+                      onClick={handleLoadDefaultGoals}
                       className="inline-flex items-center gap-1.5 text-[10px] font-bold text-[#1c648e] bg-primary-light/50 px-3.5 py-1.5 rounded-lg border border-primary/20 hover:bg-primary-light transition-all shadow-sm"
                     >
                       ⚡ Load Default Goals
